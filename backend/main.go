@@ -1,15 +1,21 @@
 package main
 
 import (
-	"github.com/gofiber/fiber/v2"
+	"log"
+	"net/http"
+
+	"github.com/nab-cat/GIS-APP/backend/config"
+	"github.com/nab-cat/GIS-APP/backend/models"
+	"github.com/nab-cat/GIS-APP/backend/routes"
 )
 
 func main() {
-	app := fiber.New()
+	config.ConnectDatabase()
 
-	app.Get("/api/hello", func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{"message": "Hello from Go!"})
-	})
+	// Auto-migrate the User model
+	config.DB.AutoMigrate(&models.User{})
 
-	app.Listen(":4000") // Run backend on port 4000
+	router := routes.RegisterRoutes()
+	log.Println("Server running on http://localhost:8080")
+	log.Fatal(http.ListenAndServe(":8080", router))
 }
