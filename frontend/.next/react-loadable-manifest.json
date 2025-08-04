@@ -10,5 +10,11 @@
     "files": [
       "static/chunks/_pages-dir-browser_node_modules_next_dist_pages__error_js.js"
     ]
+  },
+  "pages\\index.tsx -> ../components/Map": {
+    "id": "pages\\index.tsx -> ../components/Map",
+    "files": [
+      "static/chunks/_pages-dir-browser_src_components_Map_tsx.js"
+    ]
   }
 }
