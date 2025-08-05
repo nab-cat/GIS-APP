@@ -2,30 +2,31 @@ package main
 
 import (
 	"log"
-	"net/http"
 
+	"github.com/gin-contrib/cors"
 	"github.com/nab-cat/GIS-APP/backend/config"
 	"github.com/nab-cat/GIS-APP/backend/models"
 	"github.com/nab-cat/GIS-APP/backend/routes"
-	"github.com/rs/cors"
 )
 
 func main() {
+	// Connect to DB and migrate
 	config.ConnectDatabase()
-	config.DB.AutoMigrate(&models.User{}, &models.Location{})
+	config.DB.AutoMigrate(&models.User{}, &models.Spot{})
 
+	// Initialize Gin router
 	router := routes.RegisterRoutes()
 
-	// CORS middleware
-	c := cors.New(cors.Options{
-		AllowedOrigins:   []string{"http://localhost:3000"}, // React frontend
+	// Configure CORS for Gin
+	router.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"http://localhost:3000"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"*"},
 		AllowCredentials: true,
-		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"*"},
-	})
-
-	handler := c.Handler(router)
+	}))
 
 	log.Println("Server running on http://localhost:8080")
-	log.Fatal(http.ListenAndServe(":8080", handler))
+	if err := router.Run(":8080"); err != nil {
+		log.Fatal("Failed to run server:", err)
+	}
 }

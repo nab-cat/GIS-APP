@@ -1,24 +1,24 @@
 package routes
 
 import (
-	"github.com/gorilla/mux"
+	"github.com/gin-gonic/gin"
 	"github.com/nab-cat/GIS-APP/backend/handlers"
 )
 
-func RegisterRoutes() *mux.Router {
-	router := mux.NewRouter()
+func RegisterRoutes() *gin.Engine {
+	router := gin.Default()
 
 	// Users
-	router.HandleFunc("/users", handlers.GetUsers).Methods("GET")
-	router.HandleFunc("/users", handlers.CreateUser).Methods("POST")
-	router.HandleFunc("/users/{id}", handlers.UpdateUser).Methods("PUT")
-	router.HandleFunc("/users/{id}", handlers.DeleteUser).Methods("DELETE")
+	router.GET("/users", handlers.GetUsers)
+	router.POST("/users", handlers.CreateUser)
+	router.PUT("/users/:id", handlers.UpdateUser)
+	router.DELETE("/users/:id", handlers.DeleteUser)
 
-	// Locations
-	router.HandleFunc("/locations", handlers.GetLocations).Methods("GET")
-	router.HandleFunc("/locations", handlers.CreateLocation).Methods("POST")
-	router.HandleFunc("/locations/{id}", handlers.UpdateLocation).Methods("PUT")
-	router.HandleFunc("/locations/{id}", handlers.DeleteLocation).Methods("DELETE")
+	// Spots
+	router.GET("/spots", handlers.GetSpots)
+	router.POST("/spots", handlers.CreateSpot)
+	router.PUT("/spots/:id", handlers.UpdateSpot)
+	router.DELETE("/spots/:id", handlers.DeleteSpot)
 
 	return router
 }
