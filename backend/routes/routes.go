@@ -5,9 +5,8 @@ import (
 	"github.com/nab-cat/GIS-APP/backend/handlers"
 )
 
-func RegisterRoutes() *gin.Engine {
-	router := gin.Default()
-
+// RegisterRoutes registers all routes on the given Gin router.
+func RegisterRoutes(router *gin.Engine) {
 	// Users
 	router.GET("/users", handlers.GetUsers)
 	router.POST("/users", handlers.CreateUser)
@@ -19,6 +18,5 @@ func RegisterRoutes() *gin.Engine {
 	router.POST("/spots", handlers.CreateSpot)
 	router.PUT("/spots/:id", handlers.UpdateSpot)
 	router.DELETE("/spots/:id", handlers.DeleteSpot)
-
-	return router
+	router.GET("/spots/nearby", handlers.GetNearbySpots)
 }

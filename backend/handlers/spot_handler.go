@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/nab-cat/GIS-APP/backend/config"
@@ -57,4 +58,47 @@ func DeleteSpot(c *gin.Context) {
 		return
 	}
 	c.Status(http.StatusNoContent)
+}
+
+func GetNearbySpots(c *gin.Context) {
+	lngStr := c.Query("lng")
+	latStr := c.Query("lat")
+	distStr := c.Query("distance")
+
+	lng, err1 := strconv.ParseFloat(lngStr, 64)
+	lat, err2 := strconv.ParseFloat(latStr, 64)
+	distance, err3 := strconv.Atoi(distStr)
+
+	if err1 != nil || err2 != nil || err3 != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid query parameters"})
+		return
+	}
+
+	type SpotWithDistance struct {
+		models.Spot
+		Distance float64 `json:"distance"`
+	}
+
+	var spotsWithDist []SpotWithDistance
+
+	err := config.DB.Raw(`
+		SELECT *, ST_Distance(
+			location::geography,
+			ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography
+		) AS distance
+		FROM spots
+		WHERE ST_DWithin(
+			location::geography,
+			ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography,
+			?
+		)
+		ORDER BY distance
+	`, lng, lat, lng, lat, distance).Scan(&spotsWithDist).Error
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, spotsWithDist)
 }

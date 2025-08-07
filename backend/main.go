@@ -4,6 +4,7 @@ import (
 	"log"
 
 	"github.com/gin-contrib/cors"
+	"github.com/gin-gonic/gin"
 	"github.com/nab-cat/GIS-APP/backend/config"
 	"github.com/nab-cat/GIS-APP/backend/models"
 	"github.com/nab-cat/GIS-APP/backend/routes"
@@ -15,7 +16,7 @@ func main() {
 	config.DB.AutoMigrate(&models.User{}, &models.Spot{})
 
 	// Initialize Gin router
-	router := routes.RegisterRoutes()
+	router := gin.Default()
 
 	// Configure CORS for Gin
 	router.Use(cors.New(cors.Config{
@@ -24,6 +25,9 @@ func main() {
 		AllowHeaders:     []string{"*"},
 		AllowCredentials: true,
 	}))
+
+	// Register routes on this router
+	routes.RegisterRoutes(router)
 
 	log.Println("Server running on http://localhost:8080")
 	if err := router.Run(":8080"); err != nil {
