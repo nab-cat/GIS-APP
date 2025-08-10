@@ -20,5 +20,5 @@ vendor/
 *.iml
 
 # Dependency lock if needed (optional)
-# package-lock.json
+package-lock.json
 # go.sum

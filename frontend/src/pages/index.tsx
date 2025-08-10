@@ -1,16 +1,11 @@
-import Layout from '@/layout/Layout';
+import Image from "next/image";
+import Navbar from "@/components/Navbar";
 
-export default function LandingPage() {
+
+export default function Home() {
     return (
-        <Layout>
-            <section className="max-w-6xl mx-auto px-6 py-20 text-center">
-                <h1 className="text-h1 lg:text-[3rem] font-heading text-primary dark:text-secondary">
-                    Discover Jakarta’s Points of Interest
-                </h1>
-                <p className="text-body lg:text-lg mt-4 text-muted dark:text-gray-400">
-                    Map your journey through parks, museums, and more.
-                </p>
-            </section>
-        </Layout>
+        <div className="bg-secondary bg-grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
+            <Navbar />
+        </div>
     );
 }
