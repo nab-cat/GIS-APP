@@ -22,7 +22,9 @@ export default function App({ Component, pageProps }: AppProps) {
         <html lang="en" suppressHydrationWarning>
             <ThemeProvider attribute="class" enableSystem={true} defaultTheme="system">
                 <main className={`${heading.variable} ${body.variable} font-body`}>
-                    <Component {...pageProps} />
+                    <div className="bg:white dark:bg:black min-w-[400px] max-w-screen-xl mx-auto px-4 sm:px-6 lg:px-8">
+                        <Component {...pageProps} />
+                    </div>
                 </main>
             </ThemeProvider>
         </html>
