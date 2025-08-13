@@ -1,11 +1,22 @@
-import Image from "next/image";
 import Navbar from "@/components/Navbar";
+import Hero from "./home/hero";
+import CTASection from "./home/cta";
+import type { NextPage } from 'next';
+import WhyChooseUs from "./home/why-choose-us";
+import Try from "./home/try";
 
-
-export default function Home() {
+const Home: NextPage = () => {
     return (
-        <div className="bg-primary">
+        <div className="bg-white dark:bg-black">
+            <Hero />
+            <CTASection />
+            <WhyChooseUs />
+            <Try />
+            
+            {/* Navbar at the bottom */}
             <Navbar />
         </div>
     );
-}
+};
+
+export default Home;
