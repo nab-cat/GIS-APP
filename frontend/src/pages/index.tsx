@@ -3,7 +3,7 @@ import Hero from "./home/hero";
 import CTASection from "./home/cta";
 import type { NextPage } from 'next';
 import WhyChooseUs from "./home/why-choose-us";
-import Try from "./home/try";
+import HowItWorks from "./home/how it works";
 
 const Home: NextPage = () => {
     return (
@@ -11,7 +11,7 @@ const Home: NextPage = () => {
             <Hero />
             <CTASection />
             <WhyChooseUs />
-            <Try />
+            <HowItWorks />
             
             {/* Navbar at the bottom */}
             <Navbar />

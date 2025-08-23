@@ -21,6 +21,15 @@ export default function MapOverlay({
     onGetCurrentLocation,
     isLocating,
 }: MapOverlayProps) {
+    // Enhanced geolocation function with high accuracy
+    const handleGetCurrentLocation = () => {
+        if (navigator.geolocation) {
+            onGetCurrentLocation();
+        } else {
+            alert("Geolocation is not supported by your browser");
+        }
+    };
+
     return (
         <>
             {/* Mobile menu toggle button */}
@@ -37,7 +46,7 @@ export default function MapOverlay({
 
             {/* Current location button */}
             <button
-                onClick={onGetCurrentLocation}
+                onClick={handleGetCurrentLocation}
                 disabled={isLocating}
                 className="absolute top-4 right-14 z-20 bg-white dark:bg-gray-800 p-2 rounded-full shadow-lg disabled:opacity-60"
                 aria-label="Find my location"
@@ -107,7 +116,7 @@ export default function MapOverlay({
                             Controls
                         </h3>
                         <button
-                            onClick={onGetCurrentLocation}
+                            onClick={handleGetCurrentLocation}
                             disabled={isLocating}
                             className="flex items-center justify-center w-full py-2.5 bg-primary hover:bg-primary/90 text-white rounded-lg transition-colors disabled:opacity-70"
                         >
