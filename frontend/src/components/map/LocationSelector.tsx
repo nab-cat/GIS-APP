@@ -1,0 +1,233 @@
+import { useState, useEffect, useRef } from 'react';
+import { Search, MapPin, Compass, Loader2, X, Check } from 'lucide-react';
+import { Location, LocationSearchResult } from '@/types/location';
+import { useGeolocation } from '@/hooks/useGeolocation';
+import { mapboxService } from '@/services/mapboxService';
+
+interface LocationSelectorProps {
+  userType: 'A' | 'B';
+  location: Location | null;
+  onLocationSelect: (location: Location) => void;
+  onLocationClear: () => void;
+  className?: string;
+}
+
+export default function LocationSelector({
+  userType,
+  location,
+  onLocationSelect,
+  onLocationClear,
+  className = '',
+}: LocationSelectorProps) {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<LocationSearchResult[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [showResults, setShowResults] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  
+  const { location: currentLocation, isLoading: isGeolocating, error: geoError, getCurrentLocation } = useGeolocation();
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Handle search input changes
+  useEffect(() => {
+    if (searchQuery.trim().length < 3) {
+      setSearchResults([]);
+      setShowResults(false);
+      return;
+    }
+
+    // Debounce search
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    searchTimeoutRef.current = setTimeout(async () => {
+      setIsSearching(true);
+      setSearchError(null);
+
+      try {
+        const results = await mapboxService.searchLocation(searchQuery, 5);
+        setSearchResults(results);
+        setShowResults(true);
+      } catch (error) {
+        setSearchError(error instanceof Error ? error.message : 'Search failed');
+        setSearchResults([]);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 300);
+
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, [searchQuery]);
+
+  // Handle current location selection
+  useEffect(() => {
+    if (currentLocation) {
+      onLocationSelect(currentLocation);
+      setSearchQuery(currentLocation.name);
+      setShowResults(false);
+    }
+  }, [currentLocation, onLocationSelect]);
+
+  const handleSearchResultSelect = (result: LocationSearchResult) => {
+    const newLocation: Location = {
+      id: result.id,
+      name: result.place_name,
+      coordinates: {
+        lng: result.center[0],
+        lat: result.center[1],
+      },
+      address: result.place_name,
+      type: 'search',
+      timestamp: Date.now(),
+    };
+
+    onLocationSelect(newLocation);
+    setSearchQuery(result.place_name);
+    setShowResults(false);
+  };
+
+  const handleClearLocation = () => {
+    setSearchQuery('');
+    setSearchResults([]);
+    setShowResults(false);
+    onLocationClear();
+  };
+
+  const handleGetCurrentLocation = () => {
+    getCurrentLocation();
+  };
+
+  const handleInputFocus = () => {
+    if (searchResults.length > 0) {
+      setShowResults(true);
+    }
+  };
+
+  const handleInputBlur = () => {
+    // Delay hiding results to allow clicking on them
+    setTimeout(() => setShowResults(false), 200);
+  };
+
+  return (
+    <div className={`relative ${className}`}>
+      {/* Header */}
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="font-heading text-lg font-semibold text-gray-900 dark:text-white flex items-center">
+          <MapPin className="mr-2 text-primary" size={20} />
+          User {userType} Location
+        </h3>
+        {location && (
+          <button
+            onClick={handleClearLocation}
+            className="text-gray-400 hover:text-red-500 transition-colors"
+            title="Clear location"
+          >
+            <X size={18} />
+          </button>
+        )}
+      </div>
+
+      {/* Search Input */}
+      <div className="relative mb-3">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+          <input
+            ref={searchInputRef}
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onFocus={handleInputFocus}
+            onBlur={handleInputBlur}
+            placeholder="Search for a location..."
+            className="w-full pl-10 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-primary focus:border-transparent transition-colors"
+          />
+          {isSearching && (
+            <Loader2 className="absolute right-3 top-1/2 transform -translate-y-1/2 text-primary animate-spin" size={18} />
+          )}
+        </div>
+
+        {/* Search Results */}
+        {showResults && searchResults.length > 0 && (
+          <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto">
+            {searchResults.map((result) => (
+              <button
+                key={result.id}
+                onClick={() => handleSearchResultSelect(result)}
+                className="w-full px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors border-b border-gray-100 dark:border-gray-700 last:border-b-0"
+              >
+                <div className="font-medium text-gray-900 dark:text-white text-sm">
+                  {result.place_name}
+                </div>
+                {result.address && result.address !== result.place_name && (
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    {result.address}
+                  </div>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Search Error */}
+        {searchError && (
+          <div className="mt-2 text-sm text-red-500">
+            {searchError}
+          </div>
+        )}
+      </div>
+
+      {/* Current Location Button */}
+      <button
+        onClick={handleGetCurrentLocation}
+        disabled={isGeolocating}
+        className="w-full flex items-center justify-center py-2.5 bg-primary hover:bg-primary/90 text-white rounded-lg transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
+      >
+        {isGeolocating ? (
+          <Loader2 size={18} className="mr-2 animate-spin" />
+        ) : (
+          <Compass size={18} className="mr-2" />
+        )}
+        <span className="font-medium">
+          {isGeolocating ? 'Getting Location...' : 'Use Current Location'}
+        </span>
+      </button>
+
+      {/* Geolocation Error */}
+      {geoError && (
+        <div className="mt-2 text-sm text-red-500">
+          {geoError}
+        </div>
+      )}
+
+      {/* Selected Location Display */}
+      {location && (
+        <div className="mt-4 p-3 bg-gray-50 dark:bg-gray-900 rounded-lg">
+          <div className="flex items-start justify-between">
+            <div className="flex-1">
+              <div className="flex items-center mb-1">
+                <Check className="text-green-500 mr-2" size={16} />
+                <span className="font-medium text-gray-900 dark:text-white text-sm">
+                  {location.name}
+                </span>
+              </div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">
+                {location.coordinates.lng.toFixed(4)}, {location.coordinates.lat.toFixed(4)}
+              </div>
+              {location.accuracy && (
+                <div className="text-xs text-gray-500 dark:text-gray-400">
+                  Accuracy: ±{Math.round(location.accuracy)}m
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

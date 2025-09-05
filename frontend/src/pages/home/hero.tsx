@@ -61,8 +61,8 @@ export default function Hero() {
 
                 {/* CTA Buttons */}
                 <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-                    <ButtonPrimary href="#cta" label="Get Started" icon={ArrowRight} />
-                    <ButtonSecondary href="#" label="Pelajari Lebih Lanjut" />
+                    <ButtonPrimary href="/meet" label="Get Started" icon={ArrowRight} />
+                    <ButtonSecondary href="#cta" label="Pelajari Lebih Lanjut" />
                 </div>
             </div>
         </div>

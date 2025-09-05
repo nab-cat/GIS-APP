@@ -1,4 +1,5 @@
 import { MapPin, Navigation, ArrowRight } from "lucide-react";
+import Link from "next/link";
 
 export default function CTASection() {
     return (
@@ -42,10 +43,10 @@ export default function CTASection() {
                         </p>
 
                         <div className="flex flex-col sm:flex-row gap-4">
-                            <button className="px-6 py-3 bg-primary hover:bg-primary/90 text-white font-medium rounded-lg flex items-center justify-center transition-all duration-200 shadow-lg shadow-primary/20">
+                            <Link href="/meet" className="px-6 py-3 bg-primary hover:bg-primary/90 text-white font-medium rounded-lg flex items-center justify-center transition-all duration-200 shadow-lg shadow-primary/20">
                                 Find Middle Point
                                 <ArrowRight className="ml-2 h-5 w-5" />
-                            </button>
+                            </Link>
                             <button className="px-6 py-3 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white font-medium rounded-lg hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors">
                                 How It Works
                             </button>
