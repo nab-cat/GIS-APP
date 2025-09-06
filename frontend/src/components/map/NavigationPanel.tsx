@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Navigation, Clock, MapPin, ArrowRight, Car, Walking, Bike, Loader2, ExternalLink } from 'lucide-react';
+import { Navigation, Clock, MapPin, ArrowRight, Car, Bike, Loader2, ExternalLink, Phone, Globe, Footprints } from 'lucide-react';
 import { Route } from '@/types/navigation';
 import { Location } from '@/types/location';
 import { Place } from '@/types/places';
@@ -18,7 +18,7 @@ interface NavigationPanelProps {
 
 const TRAVEL_MODES = [
   { id: 'driving', name: 'Driving', icon: Car, color: 'text-blue-500' },
-  { id: 'walking', name: 'Walking', icon: Walking, color: 'text-green-500' },
+  { id: 'walking', name: 'Walking', icon: Footprints, color: 'text-green-500' },
   { id: 'cycling', name: 'Cycling', icon: Bike, color: 'text-orange-500' },
 ];
 
