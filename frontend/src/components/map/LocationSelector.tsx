@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Search, MapPin, Compass, Loader2, X, Check } from 'lucide-react';
+import { Search, MapPin, Compass, Loader2, X, Check, Map as MapIcon } from 'lucide-react';
 import { Location, LocationSearchResult } from '@/types/location';
 import { useGeolocation } from '@/hooks/useGeolocation';
 import { mapboxService } from '@/services/mapboxService';
@@ -9,6 +9,8 @@ interface LocationSelectorProps {
   location: Location | null;
   onLocationSelect: (location: Location) => void;
   onLocationClear: () => void;
+  onMapPickerToggle: (userType: 'A' | 'B', isActive: boolean) => void;
+  isMapPickerActive: boolean;
   className?: string;
 }
 
@@ -17,6 +19,8 @@ export default function LocationSelector({
   location,
   onLocationSelect,
   onLocationClear,
+  onMapPickerToggle,
+  isMapPickerActive,
   className = '',
 }: LocationSelectorProps) {
   const [searchQuery, setSearchQuery] = useState('');
@@ -97,10 +101,23 @@ export default function LocationSelector({
     setSearchResults([]);
     setShowResults(false);
     onLocationClear();
+    
+    // Also turn off map picker if it's active
+    if (isMapPickerActive) {
+      onMapPickerToggle(userType, false);
+    }
   };
 
   const handleGetCurrentLocation = () => {
+    // Turn off map picker if it's active
+    if (isMapPickerActive) {
+      onMapPickerToggle(userType, false);
+    }
     getCurrentLocation();
+  };
+
+  const handleToggleMapPicker = () => {
+    onMapPickerToggle(userType, !isMapPickerActive);
   };
 
   const handleInputFocus = () => {
@@ -182,21 +199,48 @@ export default function LocationSelector({
         )}
       </div>
 
-      {/* Current Location Button */}
-      <button
-        onClick={handleGetCurrentLocation}
-        disabled={isGeolocating}
-        className="w-full flex items-center justify-center py-2.5 bg-primary hover:bg-primary/90 text-white rounded-lg transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
-      >
-        {isGeolocating ? (
-          <Loader2 size={18} className="mr-2 animate-spin" />
-        ) : (
-          <Compass size={18} className="mr-2" />
-        )}
-        <span className="font-medium">
-          {isGeolocating ? 'Getting Location...' : 'Use Current Location'}
-        </span>
-      </button>
+      {/* Location Selection Buttons */}
+      <div className="flex space-x-2 mb-3">
+        {/* Current Location Button */}
+        <button
+          onClick={handleGetCurrentLocation}
+          disabled={isGeolocating}
+          className="flex-1 flex items-center justify-center py-2.5 bg-primary hover:bg-primary/90 text-white rounded-lg transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
+        >
+          {isGeolocating ? (
+            <Loader2 size={18} className="mr-2 animate-spin" />
+          ) : (
+            <Compass size={18} className="mr-2" />
+          )}
+          <span className="font-medium">
+            {isGeolocating ? 'Getting...' : 'Current Location'}
+          </span>
+        </button>
+
+        {/* Map Picker Button */}
+        <button
+          onClick={handleToggleMapPicker}
+          className={`flex-1 flex items-center justify-center py-2.5 rounded-lg transition-colors ${
+            isMapPickerActive
+              ? 'bg-green-500 hover:bg-green-600 text-white'
+              : 'bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-white'
+          }`}
+        >
+          <MapIcon size={18} className="mr-2" />
+          <span className="font-medium">
+            {isMapPickerActive ? 'Picking...' : 'Pick on Map'}
+          </span>
+        </button>
+      </div>
+
+      {/* Map Picker Instructions */}
+      {isMapPickerActive && (
+        <div className="mb-3 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+          <p className="text-sm text-green-800 dark:text-green-200">
+            Click anywhere on the map to set User {userType}`s location
+          </p>
+        </div>
+      )}
 
       {/* Geolocation Error */}
       {geoError && (

@@ -11,7 +11,8 @@ import LocationSelector from './LocationSelector';
 import IsochroneLayer from './IsochroneLayer';
 import MeetingSpotSelector from './MeetingSpotSelector';
 import NavigationPanel from './NavigationPanel';
-import { ChevronLeft, ChevronRight, MapPin, Users, Navigation, Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, MapPin, Users, Navigation, Loader2, MapIcon } from 'lucide-react';
+import { mapboxService } from '@/services/mapboxService';
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!;
 
@@ -33,6 +34,7 @@ export default function MeetInMiddleMap({ className = '' }: MeetInMiddleMapProps
     const [travelMode, setTravelMode] = useState<'driving' | 'walking' | 'cycling'>('driving');
     const [maxTravelTime, setMaxTravelTime] = useState(30);
     const [overlapArea, setOverlapArea] = useState<OverlapArea | null>(null);
+    const [activeMapPicker, setActiveMapPicker] = useState<'A' | 'B' | null>(null);
 
     // Custom hooks
     const {
@@ -162,6 +164,82 @@ export default function MeetInMiddleMap({ className = '' }: MeetInMiddleMapProps
         }
     }, [isochroneOverlap]);
 
+    // Add map click handler
+    useEffect(() => {
+        if (!mapRef.current || !mapReady) return;
+        
+        const map = mapRef.current;
+        
+        const handleMapClick = (e: mapboxgl.MapMouseEvent) => {
+            if (!activeMapPicker) return;
+            
+            // Get the clicked coordinates
+            const { lng, lat } = e.lngLat;
+            
+            // Reverse geocode to get place name
+            mapboxService.reverseGeocode(lng, lat)
+                .then(placeName => {
+                    const newLocation: Location = {
+                        id: `map-${Date.now()}`,
+                        name: placeName || `Selected Point (${lng.toFixed(4)}, ${lat.toFixed(4)})`,
+                        coordinates: { lng, lat },
+                        address: placeName || '',
+                        type: 'map',
+                        timestamp: Date.now()
+                    };
+                    
+                    if (activeMapPicker === 'A') {
+                        setUserALocation(newLocation);
+                    } else {
+                        setUserBLocation(newLocation);
+                    }
+                    
+                    // Turn off map picker mode
+                    setActiveMapPicker(null);
+                })
+                .catch(() => {
+                    // Handle error by using coordinates as name
+                    const newLocation: Location = {
+                        id: `map-${Date.now()}`,
+                        name: `Selected Point (${lng.toFixed(4)}, ${lat.toFixed(4)})`,
+                        coordinates: { lng, lat },
+                        address: '',
+                        type: 'map',
+                        timestamp: Date.now()
+                    };
+                    
+                    if (activeMapPicker === 'A') {
+                        setUserALocation(newLocation);
+                    } else {
+                        setUserBLocation(newLocation);
+                    }
+                    
+                    // Turn off map picker mode
+                    setActiveMapPicker(null);
+                });
+        };
+        
+        if (activeMapPicker) {
+            // Set cursor style and add click listener when picker is active
+            map.getCanvas().style.cursor = 'crosshair';
+            map.once('click', handleMapClick);
+        } else {
+            // Reset cursor style when picker is not active
+            map.getCanvas().style.cursor = '';
+        }
+        
+        return () => {
+            // Clean up
+            map.off('click', handleMapClick);
+            map.getCanvas().style.cursor = '';
+        };
+    }, [activeMapPicker, mapReady, mapRef]);
+    
+    // Handle map picker toggle
+    const handleMapPickerToggle = (userType: 'A' | 'B', isActive: boolean) => {
+        setActiveMapPicker(isActive ? userType : null);
+    };
+
     // Handle location selection
     const handleUserALocationSelect = (location: Location) => {
         setUserALocation(location);
@@ -199,15 +277,15 @@ export default function MeetInMiddleMap({ className = '' }: MeetInMiddleMapProps
     const handleGenerateIsochrones = async () => {
         if (!userALocation || !userBLocation) return;
 
-        // Use default parameters for initial generation
+        // Use a single travel time parameter
         const options: IsochroneOptions = {
-            profile: 'driving', // Start with driving
-            minutes: [10, 20, 30],
-            colors: ['#3B82F6', '#60A5FA', '#93C5FD'],
+            profile: travelMode,
+            minutes: [maxTravelTime], // Single value in array
+            colors: ['#3B82F6'],      // Single color
             polygons: true,
         };
 
-        console.log('Generating isochrones with default options:', options);
+        console.log('Generating isochrones with options:', options);
         await generateIsochrones(userALocation, userBLocation, options);
         // Don't change step yet - let user see the isochrones first
     };
@@ -310,8 +388,8 @@ export default function MeetInMiddleMap({ className = '' }: MeetInMiddleMapProps
                     userBLocation={userBLocation}
                     options={{
                         profile: travelMode,
-                        minutes: [10, 20, 30],
-                        colors: ['#3B82F6', '#60A5FA', '#93C5FD'],
+                        minutes: [maxTravelTime], // Single value in array
+                        colors: ['#3B82F6'],      // Single color
                         polygons: true,
                     }}
                     onOverlapAreaChange={setOverlapArea}
@@ -393,12 +471,16 @@ export default function MeetInMiddleMap({ className = '' }: MeetInMiddleMapProps
                                 location={userALocation}
                                 onLocationSelect={handleUserALocationSelect}
                                 onLocationClear={handleUserALocationClear}
+                                onMapPickerToggle={handleMapPickerToggle}
+                                isMapPickerActive={activeMapPicker === 'A'}
                             />
                             <LocationSelector
                                 userType="B"
                                 location={userBLocation}
                                 onLocationSelect={handleUserBLocationSelect}
                                 onLocationClear={handleUserBLocationClear}
+                                onMapPickerToggle={handleMapPickerToggle}
+                                isMapPickerActive={activeMapPicker === 'B'}
                             />
                         </div>
                     )}
@@ -508,6 +590,22 @@ export default function MeetInMiddleMap({ className = '' }: MeetInMiddleMapProps
                     )}
                 </div>
             </div>
+
+            {/* Map Picker Indicator */}
+            {activeMapPicker && (
+                <div className="absolute top-16 left-1/2 transform -translate-x-1/2 z-20">
+                    <div className="bg-green-100 dark:bg-green-900 border border-green-300 dark:border-green-700 rounded-lg px-3 py-2">
+                        <div className="flex items-center space-x-2">
+                            <MapIcon size={16} className="text-green-600" />
+                            <span className="text-green-800 dark:text-green-200 text-sm">
+                                Click anywhere to set User {activeMapPicker}`s location
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
+
+type LocationPickerType = "current" | "manual" | "search" | "A" | "B";

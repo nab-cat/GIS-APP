@@ -66,33 +66,23 @@ class MapboxService {
     }));
   }
 
-  async reverseGeocode(lng: number, lat: number): Promise<LocationSearchResult | null> {
-    const params = {
-      types: 'place,locality,neighborhood,address',
-      limit: '1',
-    };
-
-    const response = await this.makeRequest<{
-      features: Array<{
-        id: string;
-        place_name: string;
-        center: [number, number];
-        address?: string;
-      }>;
-    }>(`/geocoding/v5/mapbox.places/${lng},${lat}.json`, params);
-
-    if (response.features.length === 0) {
-      return null;
+  async reverseGeocode(lng: number, lat: number): Promise<string> {
+    const response = await fetch(
+        `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${MAPBOX_ACCESS_TOKEN}&types=address,poi,place`
+    );
+    
+    if (!response.ok) {
+        throw new Error('Reverse geocoding failed');
     }
-
-    const feature = response.features[0];
-    return {
-      id: feature.id,
-      place_name: feature.place_name,
-      center: feature.center,
-      address: feature.address,
-    };
-  }
+    
+    const data = await response.json();
+    
+    if (data.features && data.features.length > 0) {
+        return data.features[0].place_name;
+    }
+    
+    return '';
+}
 
   // Isochrone API
   async getIsochrone(
