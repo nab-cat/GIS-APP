@@ -84,6 +84,66 @@ class MapboxService {
     return '';
 }
 
+  // Enhanced reverse geocoding with POIs
+  async searchReverseWithPOIs(
+    lng: number,
+    lat: number,
+    options: {
+      radius?: number;
+      limit?: number;
+      types?: string[];
+      category?: string;
+    } = {}
+  ): Promise<Place[]> {
+    const params: Record<string, string> = {
+      limit: (options.limit || 10).toString(),
+      types: options.types?.join(',') || 'poi',
+      proximity: `${lng},${lat}`,
+      radius: (options.radius || 1000).toString(), // 1km radius
+    };
+
+    if (options.category) {
+      params.category = options.category;
+    }
+
+    console.log(`Searching for POIs near ${lng}, ${lat} with params:`, params);
+
+    try {
+      const response = await this.makeRequest<{
+        features: Array<{
+          id: string;
+          text: string;
+          place_name: string;
+          center: [number, number];
+          properties?: {
+            category?: string;
+            rating?: number;
+            maki?: string;
+          };
+        }>;
+      }>(`/geocoding/v5/mapbox.places/${lng},${lat}.json`, params);
+
+      return response.features.map(feature => ({
+        id: feature.id,
+        name: feature.text || feature.place_name.split(',')[0],
+        category: feature.properties?.category || 'poi',
+        coordinates: {
+          lng: feature.center[0],
+          lat: feature.center[1],
+        },
+        address: feature.place_name,
+        distance: this.calculateDistance(
+          [lng, lat],
+          feature.center
+        ),
+        rating: feature.properties?.rating,
+      }));
+    } catch (error) {
+      console.error('Error searching for POIs:', error);
+      return [];
+    }
+  }
+
   // Isochrone API
   async getIsochrone(
     coordinates: [number, number],

@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react';
 import mapboxgl from 'mapbox-gl';
-import { IsochroneData, IsochroneOptions } from '@/types/isochrone';
+import { IsochroneData, IsochroneOptions, OverlapArea } from '@/types/isochrone';
 import { Location } from '@/types/location';
+import * as martinez from 'martinez-polygon-clipping';
 
 interface IsochroneLayerProps {
   map: mapboxgl.Map;
@@ -141,6 +142,9 @@ export default function IsochroneLayer({
         console.log('Overlap area calculated:', overlapArea);
         addOverlapLayer(overlapArea);
         onOverlapAreaChange?.(overlapArea);
+        
+        // Find POIs in overlap area
+        findPOIsInOverlapArea(overlapArea);
       } else {
         console.log('No overlap area found');
       }
@@ -148,6 +152,39 @@ export default function IsochroneLayer({
 
     // Add click handlers for isochrone layers
     addClickHandlers();
+  };
+
+  // Find POIs within the overlap area
+  const findPOIsInOverlapArea = async (overlapArea: OverlapArea) => {
+    try {
+      // Calculate the center of the overlap area
+      const coordinates = overlapArea.geometry.coordinates[0];
+      if (!coordinates || coordinates.length === 0) return;
+      
+      const center = calculatePolygonCenter(coordinates);
+      console.log('Overlap area center:', center);
+      
+      // Use this center to perform reverse geocoding
+      // Note: This will be replaced with actual implementation in mapboxService
+      console.log('Finding POIs in overlap area...');
+    } catch (error) {
+      console.error('Error finding POIs in overlap area:', error);
+    }
+  };
+  
+  // Calculate center of a polygon
+  const calculatePolygonCenter = (coordinates: number[][]): [number, number] => {
+    if (coordinates.length === 0) return [0, 0];
+    
+    let totalLng = 0;
+    let totalLat = 0;
+    
+    coordinates.forEach(coord => {
+      totalLng += coord[0];
+      totalLat += coord[1];
+    });
+    
+    return [totalLng / coordinates.length, totalLat / coordinates.length];
   };
 
   // Cleanup function
@@ -222,7 +259,6 @@ export default function IsochroneLayer({
         } else if (layerId?.includes('overlap')) {
           message = 'Overlap area - potential meeting spots';
         }
-
         // Create popup
         new mapboxgl.Popup()
           .setLngLat(e.lngLat)
@@ -296,46 +332,85 @@ export default function IsochroneLayer({
     layersAddedRef.current.clear();
   };
 
-  // Calculate overlap area between two isochrones
-  const calculateOverlapArea = (isochroneA: IsochroneData, isochroneB: IsochroneData) => {
+  // Calculate overlap area between two isochrones using martinez-polygon-clipping
+  const calculateOverlapArea = (isochroneA: IsochroneData, isochroneB: IsochroneData): OverlapArea | null => {
     console.log('Calculating overlap area between isochrones:', {
       isochroneA: isochroneA.features.length,
       isochroneB: isochroneB.features.length
     });
-
-    // This is a simplified implementation
-    // In a real application, you'd use a proper geometric library like Turf.js
     
     if (isochroneA.features.length === 0 || isochroneB.features.length === 0) {
       console.log('One or both isochrones have no features');
       return null;
     }
 
-    // For now, we'll create a simple overlap area
-    // You would implement proper polygon intersection here
-    const polygonA = isochroneA.features[isochroneA.features.length - 1];
-    const polygonB = isochroneB.features[isochroneB.features.length - 1];
-    
-    console.log('Using polygons:', {
-      polygonA: polygonA.properties.contour,
-      polygonB: polygonB.properties.contour
-    });
+    try {
+      // Get the largest polygon from each isochrone
+      const polygonA = isochroneA.features[isochroneA.features.length - 1];
+      const polygonB = isochroneB.features[isochroneB.features.length - 1];
+      
+      console.log('Using polygons for intersection:', {
+        polygonA: polygonA.properties.contour,
+        polygonB: polygonB.properties.contour
+      });
 
-    // Use the smaller polygon as a simple overlap approximation
-    const smallerPolygon = polygonA.properties.contour <= polygonB.properties.contour ? polygonA : polygonB;
+      // Prepare polygons for martinez-polygon-clipping
+      // Martinez expects an array of polygons where each polygon is an array of rings
+      // and each ring is an array of points [x, y]
+      const coordsA = polygonA.geometry.coordinates;
+      const coordsB = polygonB.geometry.coordinates;
+
+      // Calculate intersection using martinez-polygon-clipping
+      const intersection = martinez.intersection(coordsA, coordsB);
+      
+      if (!intersection || intersection.length === 0) {
+        console.log('No intersection found between isochrones');
+        return null;
+      }
+      
+      console.log('Intersection result:', intersection);
+      
+      // Calculate area (simplified)
+      const area = calculatePolygonArea(intersection[0][0]);
+      
+      // Create and return overlap area as GeoJSON Feature
+      return {
+        type: 'Feature',
+        geometry: {
+          type: 'Polygon',
+          coordinates: intersection[0] // Use the first polygon from the intersection
+        },
+        properties: {
+          type: 'overlap',
+          area: parseFloat((area / 1000000).toFixed(2)), // Convert to km²
+          travelTime: Math.min(polygonA.properties.contour, polygonB.properties.contour),
+        },
+      };
+    } catch (error) {
+      console.error('Error calculating isochrone intersection:', error);
+      return null;
+    }
+  };
+
+  // Calculate approximate polygon area
+  const calculatePolygonArea = (coordinates: number[][]): number => {
+    let area = 0;
     
-    return {
-      type: 'Feature',
-      geometry: {
-        type: 'Polygon',
-        coordinates: smallerPolygon.geometry.coordinates,
-      },
-      properties: {
-        type: 'overlap',
-        area: 0,
-        travelTime: smallerPolygon.properties.contour,
-      },
-    };
+    if (!coordinates || coordinates.length < 3) return 0;
+    
+    for (let i = 0; i < coordinates.length - 1; i++) {
+      const [x1, y1] = coordinates[i];
+      const [x2, y2] = coordinates[i + 1];
+      area += x1 * y2 - x2 * y1;
+    }
+    
+    // Close the polygon
+    const [x1, y1] = coordinates[coordinates.length - 1];
+    const [x2, y2] = coordinates[0];
+    area += x1 * y2 - x2 * y1;
+    
+    // Convert to square meters (approximate for small areas)
+    return Math.abs(area) * 0.5 * 111000 * 111000;
   };
 
   return null; // This component doesn't render anything visible

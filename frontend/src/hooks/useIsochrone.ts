@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { IsochroneData, IsochroneOptions, OverlapArea } from '@/types/isochrone';
 import { Location } from '@/types/location';
 import { mapboxService } from '@/services/mapboxService';
+import polygonClipping from 'polygon-clipping';
 
 interface UseIsochroneReturn {
   userAIsochrone: IsochroneData | null;
@@ -91,31 +92,66 @@ function calculateOverlapArea(
   locationA: Location,
   locationB: Location
 ): OverlapArea | null {
-  // This is a simplified implementation
-  // In a real application, you'd use a proper geometric library like Turf.js
-  // to calculate the intersection of polygons
-  
   if (isochroneA.features.length === 0 || isochroneB.features.length === 0) {
+    console.log('One or both isochrones have no features');
     return null;
   }
 
-  // For now, we'll create a simple overlap area based on the largest polygons
-  const polygonA = isochroneA.features[isochroneA.features.length - 1]; // Largest polygon
-  const polygonB = isochroneB.features[isochroneB.features.length - 1]; // Largest polygon
+  try {
+    // Get the largest polygon from each isochrone
+    const polygonA = isochroneA.features[isochroneA.features.length - 1];
+    const polygonB = isochroneB.features[isochroneB.features.length - 1];
 
-  // This is a placeholder - you'd implement proper polygon intersection here
-  // For now, we'll return a simple overlap area
-  return {
-    type: 'Feature',
-    geometry: {
-      type: 'Polygon',
-      coordinates: polygonA.geometry.coordinates, // This should be the intersection
-    },
-    properties: {
-      area: 0, // Calculate actual area
-      travelTime: polygonA.properties.contour,
-      userA: locationA.id,
-      userB: locationB.id,
-    },
-  };
+    // Extract coordinates for polygon-clipping format (it expects different structure than GeoJSON)
+    const coordsA = polygonA.geometry.coordinates;
+    const coordsB = polygonB.geometry.coordinates;
+
+    // Calculate intersection
+    const intersection = polygonClipping.intersection(coordsA, coordsB);
+
+    if (!intersection || intersection.length === 0 || intersection[0].length === 0) {
+      console.log('No intersection found between isochrones');
+      return null;
+    }
+
+    // Calculate area using simple formula (approximate for small areas)
+    const area = calculatePolygonArea(intersection[0][0]);
+    
+    // Return as GeoJSON feature
+    return {
+      type: 'Feature',
+      geometry: {
+        type: 'Polygon',
+        coordinates: intersection[0]
+      },
+      properties: {
+        area: parseFloat((area / 1000000).toFixed(2)), // Convert to km²
+        travelTime: Math.max(polygonA.properties.contour, polygonB.properties.contour),
+        userA: locationA.id,
+        userB: locationB.id,
+      },
+    };
+  } catch (error) {
+    console.error('Error calculating intersection:', error);
+    return null;
+  }
+}
+
+// Simple function to calculate polygon area (in square meters)
+function calculatePolygonArea(coords: number[][]): number {
+  let area = 0;
+  
+  for (let i = 0; i < coords.length - 1; i++) {
+    const [x1, y1] = coords[i];
+    const [x2, y2] = coords[i + 1];
+    area += x1 * y2 - x2 * y1;
+  }
+  
+  // Close the polygon
+  const [x1, y1] = coords[coords.length - 1];
+  const [x2, y2] = coords[0];
+  area += x1 * y2 - x2 * y1;
+  
+  // Convert to square meters (approximate for small areas)
+  return Math.abs(area) * 0.5 * 111000 * 111000;
 }
