@@ -2,7 +2,6 @@
 import { useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
-import MapOverlay from "./map-overlay";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!;
 
@@ -232,13 +231,6 @@ export default function Map() {
                 </div>
             )}
 
-            <MapOverlay
-                isMenuOpen={isMenuOpen}
-                setIsMenuOpen={setIsMenuOpen}
-                selectedLocation={selectedLocation}
-                onRemoveAllMarkers={removeMarker}
-                onGetCurrentLocation={getCurrentLocation}
-                isLocating={isLocating} markers={[]}            />
 
             {/* Add this style tag for custom popup styles */}
             <style jsx global>{`

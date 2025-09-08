@@ -20,6 +20,12 @@
       {
         "image-alt": "off"
       }
+    ],
+    "axe/forms": [
+      "default",
+      {
+        "label": "off"
+      }
     ]
   }
 }
