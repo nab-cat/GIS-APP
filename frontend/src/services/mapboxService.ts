@@ -144,6 +144,65 @@ class MapboxService {
     }
   }
 
+  // Search API for reverse geocoding with POIs
+  async searchReverseWithPOIs(
+    lng: number,
+    lat: number,
+    options: {
+      radius?: number;
+      limit?: number;
+      types?: string[];
+      category?: string;
+    } = {}
+  ): Promise<Place[]> {
+    const url = `https://api.mapbox.com/search/searchbox/v1/reverse?longitude=${lng}&latitude=${lat}&access_token=${MAPBOX_ACCESS_TOKEN}`;
+    
+    console.log(`Searching for POIs near ${lng}, ${lat} using Search API`);
+
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Search API request failed: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      if (!data.features || data.features.length === 0) {
+        return [];
+      }
+      
+      // Transform the response to match our Place type
+      return data.features.map(feature => {
+        // Extract the name and address from the feature
+        const name = feature.properties.name || feature.properties.place_formatted.split(',')[0];
+        const address = feature.properties.place_formatted;
+        
+        // Get coordinates
+        const { longitude, latitude } = feature.properties.coordinates;
+        
+        return {
+          id: feature.properties.mapbox_id || `place-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          name,
+          category: feature.properties.feature_type || 'poi',
+          coordinates: {
+            lng: longitude,
+            lat: latitude,
+          },
+          address,
+          distance: this.calculateDistance(
+            [lng, lat],
+            [longitude, latitude]
+          ),
+          rating: undefined, // Search API doesn't provide ratings
+          maki: feature.properties.maki || 'marker',
+        };
+      });
+    } catch (error) {
+      console.error('Error searching for POIs with Search API:', error);
+      return [];
+    }
+  }
+
   // Isochrone API
   async getIsochrone(
     coordinates: [number, number],
@@ -266,7 +325,17 @@ class MapboxService {
     end: [number, number],
     options: NavigationOptions = { profile: 'driving' }
   ): Promise<Route> {
-    const params = {
+    // Validate coordinates
+    if (start.some(isNaN) || end.some(isNaN)) {
+      throw new Error('Invalid coordinates provided to directions API');
+    }
+    
+    const coordString = `${start[0]},${start[1]};${end[0]},${end[1]}`;
+    
+    console.log(`Getting directions from ${start} to ${end}, profile: ${options.profile}`);
+    console.log('Coordinate string:', coordString);
+    
+    const params: Record<string, string> = {
       profile: options.profile || 'driving',
       alternatives: options.alternatives ? 'true' : 'false',
       steps: options.steps ? 'true' : 'false',
@@ -274,55 +343,60 @@ class MapboxService {
       overview: options.overview || 'full',
     };
 
-    const response = await this.makeRequest<{
-      routes: Array<{
-        distance: number;
-        duration: number;
-        geometry: {
-          type: 'LineString';
-          coordinates: number[][];
-        };
-        legs: Array<{
+    try {
+      const response = await this.makeRequest<{
+        routes: Array<{
           distance: number;
           duration: number;
-          steps: Array<{
+          geometry: {
+            type: 'LineString';
+            coordinates: number[][];
+          };
+          legs: Array<{
             distance: number;
             duration: number;
-            instruction: string;
-            maneuver: {
-              type: string;
-              location: [number, number];
-              bearing_before: number;
-              bearing_after: number;
-            };
-            geometry: {
-              type: 'LineString';
-              coordinates: number[][];
-            };
+            steps: Array<{
+              distance: number;
+              duration: number;
+              instruction: string;
+              maneuver: {
+                type: string;
+                location: [number, number];
+                bearing_before: number;
+                bearing_after: number;
+              };
+              geometry: {
+                type: 'LineString';
+                coordinates: number[][];
+              };
+            }>;
+            summary: string;
           }>;
-          summary: string;
         }>;
-      }>;
-      waypoints: Array<{
-        coordinates: [number, number];
-        name: string;
-        waypoint_index: number;
-      }>;
-    }>(`/directions/v5/mapbox/${params.profile}/${start[0]},${start[1]};${end[0]},${end[1]}`, params);
+        waypoints: Array<{
+          coordinates: [number, number];
+          name: string;
+          waypoint_index: number;
+        }>;
+      }>(`/directions/v5/mapbox/${params.profile}/${coordString}`, params);
 
-    if (response.routes.length === 0) {
-      throw new Error('No route found');
+      if (response.routes.length === 0) {
+        throw new Error('No route found');
+      }
+
+      const route = response.routes[0];
+      return {
+        id: `route-${Date.now()}`,
+        distance: route.distance,
+        duration: route.duration,
+        geometry: route.geometry,
+        legs: route.legs,
+        waypoints: response.waypoints,
+      };
+    } catch (error) {
+      console.error('Directions API error:', error);
+      throw error;
     }
-
-    const route = response.routes[0];
-    return {
-      id: `route-${Date.now()}`,
-      distance: route.distance,
-      duration: route.duration,
-      geometry: route.geometry,
-      legs: route.legs,
-      waypoints: response.waypoints,
-    };
   }
 
   // Matrix API for distance/time calculations
@@ -366,6 +440,49 @@ class MapboxService {
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
     return R * c; // Distance in meters
+  }
+
+  async searchboxSearch(query: string, limit: number, sessionToken: string) {
+    const url = `https://api.mapbox.com/search/searchbox/v1/suggest?q=${encodeURIComponent(query)}&limit=${limit}&session_token=${sessionToken}&access_token=${MAPBOX_ACCESS_TOKEN}`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error('Failed to fetch searchbox suggestions');
+    const data = await response.json();
+    // Map results to LocationSearchResult[]
+    return (data.suggestions || []).map((item: any) => ({
+      id: item.mapbox_id,
+      place_name: item.name || item.full_address || item.place_formatted,
+      center: item.coordinates
+        ? [item.coordinates.longitude, item.coordinates.latitude]
+        : [0, 0],
+      address: item.full_address || item.place_formatted,
+      category: item.feature_type,
+      relevance: item.relevance || 1,
+      maki: item.maki,
+      full_address: item.full_address,
+      poi_category: item.poi_category,
+      poi_category_ids: item.poi_category_ids,
+      distance: item.distance,
+      feature_type: item.feature_type,
+    }));
+  }
+
+  async retrievePlace(mapboxId: string, sessionToken: string) {
+    const url = `https://api.mapbox.com/search/searchbox/v1/retrieve/${mapboxId}?session_token=${sessionToken}&access_token=${MAPBOX_ACCESS_TOKEN}`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error('Failed to retrieve place details');
+    const data = await response.json();
+    if (!data || !data.features || data.features.length === 0) return null;
+    const feature = data.features[0];
+    return {
+      id: feature.properties.mapbox_id,
+      name: feature.properties.name,
+      coordinates: {
+        lng: feature.properties.coordinates.longitude,
+        lat: feature.properties.coordinates.latitude,
+      },
+      address: feature.properties.full_address || feature.properties.place_formatted,
+      category: feature.properties.feature_type,
+    };
   }
 }
 

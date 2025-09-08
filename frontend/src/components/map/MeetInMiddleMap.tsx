@@ -31,8 +31,8 @@ export default function MeetInMiddleMap({ className = '' }: MeetInMiddleMapProps
     const [userALocation, setUserALocation] = useState<Location | null>(null);
     const [userBLocation, setUserBLocation] = useState<Location | null>(null);
     const [selectedPlace, setSelectedPlace] = useState<Place | null>(null);
-    const [travelMode, setTravelMode] = useState<'driving' | 'walking' | 'cycling'>('driving');
-    const [maxTravelTime, setMaxTravelTime] = useState(30);
+    const [travelMode] = useState<'driving' | 'walking' | 'cycling'>('driving');
+    const [maxTravelTime] = useState(30);
     const [overlapArea, setOverlapArea] = useState<OverlapArea | null>(null);
     const [activeMapPicker, setActiveMapPicker] = useState<'A' | 'B' | null>(null);
 
@@ -114,7 +114,7 @@ export default function MeetInMiddleMap({ className = '' }: MeetInMiddleMapProps
                 .setLngLat([userALocation.coordinates.lng, userALocation.coordinates.lat])
                 .setPopup(
                     new mapboxgl.Popup().setHTML(`
-            <div class="p-2">
+            <div class="p-2 text-body">
               <h3 class="font-semibold text-sm text-blue-600">User A</h3>
               <p class="text-xs text-gray-600">${userALocation.name}</p>
             </div>
@@ -241,36 +241,31 @@ export default function MeetInMiddleMap({ className = '' }: MeetInMiddleMapProps
     };
 
     // Handle location selection
+    useEffect(() => {
+        if (userALocation && userBLocation) {
+            setCurrentStep('isochrone');
+            handleGenerateIsochrones();
+        } else {
+            setCurrentStep('location');
+            clearIsochrones();
+            clearDirections();
+        }
+    }, [userALocation, userBLocation]);
+
     const handleUserALocationSelect = (location: Location) => {
         setUserALocation(location);
-        if (userBLocation) {
-            setCurrentStep('isochrone');
-            // Auto-generate isochrones when both locations are set
-            handleGenerateIsochrones();
-        }
     };
 
     const handleUserBLocationSelect = (location: Location) => {
         setUserBLocation(location);
-        if (userALocation) {
-            setCurrentStep('isochrone');
-            // Auto-generate isochrones when both locations are set
-            handleGenerateIsochrones();
-        }
     };
 
     const handleUserALocationClear = () => {
         setUserALocation(null);
-        setCurrentStep('location');
-        clearIsochrones();
-        clearDirections();
     };
 
     const handleUserBLocationClear = () => {
         setUserBLocation(null);
-        setCurrentStep('location');
-        clearIsochrones();
-        clearDirections();
     };
 
     // Handle isochrone generation
@@ -298,14 +293,27 @@ export default function MeetInMiddleMap({ className = '' }: MeetInMiddleMapProps
 
     // Handle directions
     const handleGetDirections = async () => {
-        if (!userALocation || !userBLocation || !selectedPlace) return;
+        if (!userALocation || !userBLocation || !selectedPlace) {
+            console.error('Cannot get directions: missing locations or selected place');
+            return;
+        }
 
-        await getDirections(userALocation, userBLocation, selectedPlace, {
-            profile: travelMode,
-            steps: true,
-            geometries: 'geojson',
-            overview: 'full',
+        console.log('Getting directions to meeting spot:', {
+            userALocation,
+            userBLocation,
+            selectedPlace
         });
+
+        try {
+            await getDirections(userALocation, userBLocation, selectedPlace, {
+                profile: travelMode,
+                steps: true,
+                geometries: 'geojson',
+                overview: 'full',
+            });
+        } catch (error) {
+            console.error('Error getting directions:', error);
+        }
     };
 
     // Handle step navigation
@@ -452,7 +460,7 @@ export default function MeetInMiddleMap({ className = '' }: MeetInMiddleMapProps
                                     <ChevronLeft size={20} />
                                 </button>
                             )}
-                            {currentStep !== 'navigation' && canProceed() && (
+                            {currentStep !== 'navigation' && (
                                 <button
                                     onClick={handleNextStep}
                                     className="p-2 text-primary hover:text-primary/80"

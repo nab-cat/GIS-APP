@@ -34,20 +34,50 @@ export const useDirections = (): UseDirectionsReturn => {
     setError(null);
 
     try {
+      console.log('Getting directions with options:', {
+        userALocation,
+        userBLocation,
+        meetingSpot,
+        options
+      });
+
+      const userACoords: [number, number] = [
+        userALocation.coordinates.lng,
+        userALocation.coordinates.lat
+      ];
+
+      const userBCoords: [number, number] = [
+        userBLocation.coordinates.lng,
+        userBLocation.coordinates.lat
+      ];
+
       const meetingSpotCoords: [number, number] = [
         meetingSpot.coordinates.lng,
-        meetingSpot.coordinates.lat,
+        meetingSpot.coordinates.lat
       ];
+
+      // Ensure coordinates are valid numbers
+      if (isNaN(userACoords[0]) || isNaN(userACoords[1]) ||
+          isNaN(userBCoords[0]) || isNaN(userBCoords[1]) ||
+          isNaN(meetingSpotCoords[0]) || isNaN(meetingSpotCoords[1])) {
+        throw new Error('Invalid coordinates for directions');
+      }
+
+      console.log('Direction coordinates:', {
+        userA: userACoords,
+        userB: userBCoords,
+        meeting: meetingSpotCoords
+      });
 
       // Get directions for both users in parallel
       const [routeA, routeB] = await Promise.all([
         mapboxService.getDirections(
-          [userALocation.coordinates.lng, userALocation.coordinates.lat],
+          userACoords,
           meetingSpotCoords,
           options
         ),
         mapboxService.getDirections(
-          [userBLocation.coordinates.lng, userBLocation.coordinates.lat],
+          userBCoords,
           meetingSpotCoords,
           options
         ),
@@ -56,6 +86,7 @@ export const useDirections = (): UseDirectionsReturn => {
       setUserARoute(routeA);
       setUserBRoute(routeB);
     } catch (err) {
+      console.error('Error getting directions:', err);
       setError(err instanceof Error ? err.message : 'Failed to get directions');
     } finally {
       setIsLoading(false);

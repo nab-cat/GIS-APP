@@ -9,6 +9,13 @@ export interface Location {
   type: 'current' | 'manual' | 'search';
   accuracy?: number; // in meters for geolocation
   timestamp: number;
+  category?: string;
+  maki?: string;
+  full_address?: string;
+  poi_category?: string[];
+  poi_category_ids?: string[];
+  distance?: number;
+  feature_type?: string;
 }
 
 export interface LocationSearchResult {
@@ -18,6 +25,12 @@ export interface LocationSearchResult {
   address?: string;
   category?: string;
   relevance?: number;
+  maki?: string;
+  full_address?: string;
+  poi_category?: string[];
+  poi_category_ids?: string[];
+  distance?: number;
+  feature_type?: string;
 }
 
 export interface LocationFormData {

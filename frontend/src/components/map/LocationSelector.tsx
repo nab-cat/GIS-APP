@@ -3,6 +3,7 @@ import { Search, MapPin, Compass, Loader2, X, Check, Map as MapIcon } from 'luci
 import { Location, LocationSearchResult } from '@/types/location';
 import { useGeolocation } from '@/hooks/useGeolocation';
 import { mapboxService } from '@/services/mapboxService';
+import { v4 as uuidv4 } from 'uuid';
 
 interface LocationSelectorProps {
   userType: 'A' | 'B';
@@ -28,6 +29,7 @@ export default function LocationSelector({
   const [isSearching, setIsSearching] = useState(false);
   const [showResults, setShowResults] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
+  const [sessionToken] = useState(() => uuidv4());
   
   const { location: currentLocation, isLoading: isGeolocating, error: geoError, getCurrentLocation } = useGeolocation();
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -41,7 +43,6 @@ export default function LocationSelector({
       return;
     }
 
-    // Debounce search
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
     }
@@ -51,7 +52,8 @@ export default function LocationSelector({
       setSearchError(null);
 
       try {
-        const results = await mapboxService.searchLocation(searchQuery, 5);
+        // Use Mapbox Searchbox API for POI and place search
+        const results = await mapboxService.searchboxSearch(searchQuery, 5, sessionToken);
         setSearchResults(results);
         setShowResults(true);
       } catch (error) {
@@ -67,7 +69,7 @@ export default function LocationSelector({
         clearTimeout(searchTimeoutRef.current);
       }
     };
-  }, [searchQuery]);
+  }, [searchQuery, sessionToken]);
 
   // Handle current location selection
   useEffect(() => {
@@ -78,22 +80,36 @@ export default function LocationSelector({
     }
   }, [currentLocation, onLocationSelect]);
 
-  const handleSearchResultSelect = (result: LocationSearchResult) => {
-    const newLocation: Location = {
-      id: result.id,
-      name: result.place_name,
-      coordinates: {
-        lng: result.center[0],
-        lat: result.center[1],
-      },
-      address: result.place_name,
-      type: 'search',
-      timestamp: Date.now(),
-    };
+  const handleSearchResultSelect = async (result: LocationSearchResult) => {
+    try {
+      const place = await mapboxService.retrievePlace(result.id, sessionToken);
+      if (!place) throw new Error('Could not retrieve place details');
+      const newLocation: Location = {
+        id: place.id,
+        name: place.name,
+        coordinates: {
+          lng: place.coordinates.lng,
+          lat: place.coordinates.lat,
+        },
+        address: place.address,
+        type: 'search',
+        timestamp: Date.now(),
+        category: place.category,
+        maki: place.maki,
+        full_address: place.address,
+        poi_category: place.poi_category,
+        poi_category_ids: place.poi_category_ids,
+        distance: result.distance,
+      };
+      onLocationSelect(newLocation);
 
-    onLocationSelect(newLocation);
-    setSearchQuery(result.place_name);
-    setShowResults(false);
+      // Clear search state to stop further suggestions
+      setSearchQuery('');
+      setSearchResults([]);
+      setShowResults(false);
+    } catch (err) {
+      setSearchError(err instanceof Error ? err.message : 'Failed to retrieve place');
+    }
   };
 
   const handleClearLocation = () => {
@@ -263,9 +279,24 @@ export default function LocationSelector({
               <div className="text-xs text-gray-500 dark:text-gray-400">
                 {location.coordinates.lng.toFixed(4)}, {location.coordinates.lat.toFixed(4)}
               </div>
-              {location.accuracy && (
+              {location.address && (
                 <div className="text-xs text-gray-500 dark:text-gray-400">
-                  Accuracy: ±{Math.round(location.accuracy)}m
+                  {location.address}
+                </div>
+              )}
+              {location.category && (
+                <div className="text-xs text-gray-500 dark:text-gray-400">
+                  Category: {location.category}
+                </div>
+              )}
+              {location.poi_category && (
+                <div className="text-xs text-gray-500 dark:text-gray-400">
+                  POI Categories: {location.poi_category.join(', ')}
+                </div>
+              )}
+              {location.distance && (
+                <div className="text-xs text-gray-500 dark:text-gray-400">
+                  Distance: {location.distance}m
                 </div>
               )}
             </div>

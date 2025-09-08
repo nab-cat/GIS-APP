@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useRef } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { IsochroneData, IsochroneOptions, OverlapArea } from '@/types/isochrone';
@@ -154,7 +155,7 @@ export default function IsochroneLayer({
     addClickHandlers();
   };
 
-  // Find POIs within the overlap area
+  // Find POIs within the overlap area using the new Mapbox Search API
   const findPOIsInOverlapArea = async (overlapArea: OverlapArea) => {
     try {
       // Calculate the center of the overlap area
@@ -164,9 +165,34 @@ export default function IsochroneLayer({
       const center = calculatePolygonCenter(coordinates);
       console.log('Overlap area center:', center);
       
-      // Use this center to perform reverse geocoding
-      // Note: This will be replaced with actual implementation in mapboxService
-      console.log('Finding POIs in overlap area...');
+      // Use the Mapbox Search API for reverse geocoding to find POIs
+      const MAPBOX_ACCESS_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+      const url = `https://api.mapbox.com/search/searchbox/v1/reverse?longitude=${center[0]}&latitude=${center[1]}&access_token=${MAPBOX_ACCESS_TOKEN}`;
+      
+      console.log('Fetching POIs in overlap area using Search API:', url);
+      
+      try {
+        const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch POIs: ${response.status} ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        console.log('POIs found in overlap area:', data);
+        
+        // Process POI data - can be expanded based on requirements
+        if (data && data.features && data.features.length > 0) {
+          // Could trigger an event or callback here to send the POIs to a parent component
+          console.log(`Found ${data.features.length} POIs in overlap area`);
+          
+          // You might want to add these POIs as markers on the map or pass them up
+          // to the parent component for display in a list
+        } else {
+          console.log('No POIs found in overlap area');
+        }
+      } catch (fetchError) {
+        console.error('Error fetching POIs:', fetchError);
+      }
     } catch (error) {
       console.error('Error finding POIs in overlap area:', error);
     }

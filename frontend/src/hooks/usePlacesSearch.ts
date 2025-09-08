@@ -31,21 +31,50 @@ export const usePlacesSearch = (): UsePlacesSearchReturn => {
       // Calculate center point of overlap area
       const center = calculatePolygonCenter(overlapArea.geometry.coordinates[0]);
       
-      console.log('Searching places for overlap area:', overlapArea);
-      console.log('Center point:', center);
-      console.log('Search options:', options);
+      console.log('Searching for meeting spots in overlap area:', {
+        center,
+        area: overlapArea.properties.area,
+      });
       
-      // Search for places within the overlap area
-      const foundPlaces = await mapboxService.searchPlaces(
-        [center[0], center[1]],
-        {
-          ...options,
-          radius: options.radius || 1000, // 1km radius
-        }
-      );
-
-      console.log('Found places:', foundPlaces);
-
+      // Use Mapbox Search API for reverse geocoding
+      const MAPBOX_ACCESS_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+      const url = `https://api.mapbox.com/search/searchbox/v1/reverse?longitude=${center[0]}&latitude=${center[1]}&limit=10&access_token=${MAPBOX_ACCESS_TOKEN}`;
+      
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Search API request failed: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      console.log('Reverse geocoding result:', data);
+      
+      if (!data.features || data.features.length === 0) {
+        console.log('No places found in the area');
+        setPlaces([]);
+        return;
+      }
+      
+      // Transform the response to match our Place type
+      const foundPlaces = data.features.map(feature => {
+        const { name, place_formatted, feature_type, coordinates, mapbox_id } = feature.properties;
+        
+        return {
+          id: mapbox_id || `place-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          name: name || place_formatted.split(',')[0],
+          category: feature_type || 'place',
+          coordinates: {
+            lng: coordinates.longitude,
+            lat: coordinates.latitude,
+          },
+          address: place_formatted,
+          distance: calculateDistance(
+            [center[0], center[1]],
+            [coordinates.longitude, coordinates.latitude]
+          ),
+          maki: feature.properties.maki || 'marker',
+        };
+      });
+      
       // Filter places that are actually within the overlap area
       const placesInOverlap = foundPlaces.filter(place => 
         isPointInPolygon(
@@ -54,15 +83,12 @@ export const usePlacesSearch = (): UsePlacesSearchReturn => {
         )
       );
 
-      console.log('Places in overlap:', placesInOverlap);
+      console.log('Places in overlap area:', placesInOverlap);
 
-      // Sort by distance if specified
-      if (options.sortBy === 'distance') {
-        placesInOverlap.sort((a, b) => (a.distance || 0) - (b.distance || 0));
-      }
-
+      // Sort by distance
+      placesInOverlap.sort((a, b) => (a.distance || 0) - (b.distance || 0));
+      
       setPlaces(placesInOverlap);
-      console.log('usePlacesSearch: Search completed, places set:', placesInOverlap.length);
     } catch (err) {
       console.error('Places search error:', err);
       setError(err instanceof Error ? err.message : 'Failed to search places');
@@ -113,4 +139,26 @@ function isPointInPolygon(point: [number, number], polygon: number[][]): boolean
   }
   
   return inside;
+}
+
+// Helper function to calculate distance between two points
+function calculateDistance(
+  point1: [number, number], 
+  point2: [number, number]
+): number {
+  // Simple implementation of the Haversine formula
+  const toRad = (value: number) => (value * Math.PI) / 180;
+  const R = 6371000; // Earth's radius in meters
+  
+  const dLat = toRad(point2[1] - point1[1]);
+  const dLon = toRad(point2[0] - point1[0]);
+  
+  const a = 
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(toRad(point1[1])) * Math.cos(toRad(point2[1])) *
+    Math.sin(dLon/2) * Math.sin(dLon/2);
+  
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  
+  return R * c; // Distance in meters
 }
