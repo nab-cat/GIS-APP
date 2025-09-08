@@ -371,47 +371,54 @@ export default function IsochroneLayer({
     }
 
     try {
-      // Get the largest polygon from each isochrone
-      const polygonA = isochroneA.features[isochroneA.features.length - 1];
-      const polygonB = isochroneB.features[isochroneB.features.length - 1];
-      
-      console.log('Using polygons for intersection:', {
-        polygonA: polygonA.properties.contour,
-        polygonB: polygonB.properties.contour
-      });
+        // Get the largest polygon from each isochrone
+        const polygonA = isochroneA.features[isochroneA.features.length - 1];
+        const polygonB = isochroneB.features[isochroneB.features.length - 1];
+        
+        console.log('Using polygons for intersection:', {
+            polygonA: polygonA.properties.contour,
+            polygonB: polygonB.properties.contour
+        });
 
-      // Prepare polygons for martinez-polygon-clipping
-      // Martinez expects an array of polygons where each polygon is an array of rings
-      // and each ring is an array of points [x, y]
-      const coordsA = polygonA.geometry.coordinates;
-      const coordsB = polygonB.geometry.coordinates;
-
-      // Calculate intersection using martinez-polygon-clipping
-      const intersection = martinez.intersection(coordsA, coordsB);
-      
-      if (!intersection || intersection.length === 0) {
-        console.log('No intersection found between isochrones');
-        return null;
-      }
-      
-      console.log('Intersection result:', intersection);
-      
-      // Calculate area (simplified)
-      const area = calculatePolygonArea(intersection[0][0]);
-      
-      // Create and return overlap area as GeoJSON Feature
-      return {
-        type: 'Feature',
-        geometry: {
-          type: 'Polygon',
-          coordinates: intersection[0] // Use the first polygon from the intersection
-        },
-        properties: {
-          type: 'overlap',
-          area: parseFloat((area / 1000000).toFixed(2)), // Convert to km²
-          travelTime: Math.min(polygonA.properties.contour, polygonB.properties.contour),
-        },
-      };
+        // Format polygons for martinez-polygon-clipping library
+        // Martinez expects an array of rings, where each ring is an array of points
+        const coordsA = polygonA.geometry.coordinates;
+        const coordsB = polygonB.geometry.coordinates;
+        
+        // Ensure proper formatting for martinez
+        // This handles the case where the coordinates might not be in the expected format
+        const formattedA = Array.isArray(coordsA[0][0]) ? coordsA : [coordsA];
+        const formattedB = Array.isArray(coordsB[0][0]) ? coordsB : [coordsB];
+        
+        // Calculate intersection
+        const intersection = martinez.intersection(formattedA, formattedB);
+        
+        if (!intersection || intersection.length === 0 || intersection[0].length === 0) {
+            console.log('No intersection found between isochrones');
+            return null;
+        }
+        
+        // Calculate area (simplified)
+        const area = calculatePolygonArea(intersection[0][0]);
+        
+        // Use Math.min for travel time - consistent with useIsochrone.ts
+        const travelTime = Math.min(polygonA.properties.contour, polygonB.properties.contour);
+        
+        // Create and return overlap area as GeoJSON Feature
+        return {
+            type: 'Feature',
+            geometry: {
+                type: 'Polygon',
+                coordinates: intersection[0] // Use the first polygon from the intersection
+            },
+            properties: {
+                type: 'overlap',
+                area: parseFloat((area / 1000000).toFixed(2)), // Convert to km²
+                travelTime,
+                userA: 'userA', // Add user IDs if needed
+                userB: 'userB',
+            },
+        };
     } catch (error) {
       console.error('Error calculating isochrone intersection:', error);
       return null;

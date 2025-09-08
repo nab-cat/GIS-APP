@@ -11,7 +11,7 @@ import LocationSelector from './LocationSelector';
 import IsochroneLayer from './IsochroneLayer';
 import MeetingSpotSelector from './MeetingSpotSelector';
 import NavigationPanel from './NavigationPanel';
-import { ChevronLeft, ChevronRight, MapPin, Users, Navigation, Loader2, MapIcon } from 'lucide-react';
+import { ChevronLeft, ChevronRight, MapPin, Users, Navigation, Loader2, MapIcon, Car, Footprints, Bike } from 'lucide-react';
 import { mapboxService } from '@/services/mapboxService';
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!;
@@ -31,8 +31,9 @@ export default function MeetInMiddleMap({ className = '' }: MeetInMiddleMapProps
     const [userALocation, setUserALocation] = useState<Location | null>(null);
     const [userBLocation, setUserBLocation] = useState<Location | null>(null);
     const [selectedPlace, setSelectedPlace] = useState<Place | null>(null);
-    const [travelMode] = useState<'driving' | 'walking' | 'cycling'>('driving');
-    const [maxTravelTime] = useState(30);
+    const [travelMode, setTravelMode] = useState<'driving' | 'walking' | 'cycling'>('driving');
+    const [maxTravelTime, setMaxTravelTime] = useState(30);
+    const [contourTimes, setContourTimes] = useState([10, 20, 30]); // Default contour times
     const [overlapArea, setOverlapArea] = useState<OverlapArea | null>(null);
     const [activeMapPicker, setActiveMapPicker] = useState<'A' | 'B' | null>(null);
 
@@ -268,21 +269,26 @@ export default function MeetInMiddleMap({ className = '' }: MeetInMiddleMapProps
         setUserBLocation(null);
     };
 
-    // Handle isochrone generation
+    // Update the handleGenerateIsochrones function to use the selected parameters
     const handleGenerateIsochrones = async () => {
         if (!userALocation || !userBLocation) return;
 
-        // Use a single travel time parameter
+        // Use selected parameters for isochrone generation
         const options: IsochroneOptions = {
             profile: travelMode,
-            minutes: [maxTravelTime], // Single value in array
-            colors: ['#3B82F6'],      // Single color
+            minutes: contourTimes.length > 0 ? contourTimes : [maxTravelTime], // Use contour times if selected, otherwise just max time
+            colors: contourTimes.length > 0 
+                ? contourTimes.map((_, i) => {
+                    // Generate colors from blue to red based on time
+                    const ratio = i / (contourTimes.length - 1);
+                    return `rgb(${Math.round(59 + (ratio * 180))}, ${Math.round(130 - (ratio * 70))}, ${Math.round(246 - (ratio * 200))})`;
+                  }) 
+                : ['#3B82F6'], // Default blue if only one time
             polygons: true,
         };
 
         console.log('Generating isochrones with options:', options);
         await generateIsochrones(userALocation, userBLocation, options);
-        // Don't change step yet - let user see the isochrones first
     };
 
     // Handle place selection
@@ -500,79 +506,103 @@ export default function MeetInMiddleMap({ className = '' }: MeetInMiddleMapProps
                                     Isochrone Analysis
                                 </h3>
 
-                                {isIsochroneLoading && (
-                                    <div className="flex items-center justify-center py-4">
-                                        <Loader2 size={20} className="mr-2 animate-spin text-primary" />
-                                        <span className="text-gray-600 dark:text-gray-400">Generating travel time areas...</span>
+                                {/* Travel Mode Selector */}
+                                <div className="mb-4">
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                        Travel Mode
+                                    </label>
+                                    <div className="flex space-x-2">
+                                        {[
+                                            { id: 'driving', name: 'Driving', icon: Car },
+                                            { id: 'walking', name: 'Walking', icon: Footprints },
+                                            { id: 'cycling', name: 'Cycling', icon: Bike },
+                                        ].map((mode) => {
+                                            const Icon = mode.icon;
+                                            return (
+                                                <button
+                                                    key={mode.id}
+                                                    onClick={() => setTravelMode(mode.id as 'driving' | 'walking' | 'cycling')}
+                                                    className={`flex-1 flex items-center justify-center py-2 px-3 rounded-lg border transition-colors ${
+                                                        travelMode === mode.id
+                                                            ? 'border-primary bg-primary/10 text-primary'
+                                                            : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'
+                                                    }`}
+                                                >
+                                                    <Icon size={16} className="mr-2" />
+                                                    <span className="text-sm font-medium">{mode.name}</span>
+                                                </button>
+                                            );
+                                        })}
                                     </div>
-                                )}
+                                </div>
 
-                                {isochroneError && (
-                                    <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg mb-4">
-                                        <p className="text-red-600 dark:text-red-400 text-sm">{isochroneError}</p>
+                                {/* Max Travel Time Slider */}
+                                <div className="mb-4">
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                        Maximum Travel Time: {maxTravelTime} minutes
+                                    </label>
+                                    <input
+                                        type="range"
+                                        min="5"
+                                        max="60"
+                                        step="5"
+                                        value={maxTravelTime}
+                                        onChange={(e) => setMaxTravelTime(parseInt(e.target.value))}
+                                        className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer"
+                                    />
+                                    <div className="flex justify-between text-xs text-gray-500 mt-1">
+                                        <span>5m</span>
+                                        <span>30m</span>
+                                        <span>60m</span>
                                     </div>
-                                )}
+                                </div>
 
-                                {userAIsochrone && userBIsochrone && !isIsochroneLoading && (
-                                    <div className="space-y-3">
-                                        <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-                                            <div className="flex items-center mb-2">
-                                                <div className="w-3 h-3 bg-blue-500 rounded-full mr-2"></div>
-                                                <span className="font-medium text-blue-800 dark:text-blue-200">User A Isochrone</span>
-                                            </div>
-                                            <p className="text-sm text-blue-600 dark:text-blue-400">
-                                                {userAIsochrone.features.length} travel time areas generated
-                                            </p>
-                                            <details className="mt-2">
-                                                <summary className="text-xs text-blue-500 cursor-pointer">Debug Info</summary>
-                                                <pre className="text-xs text-blue-600 dark:text-blue-400 mt-1 overflow-auto max-h-20">
-                                                    {JSON.stringify(userAIsochrone, null, 2)}
-                                                </pre>
-                                            </details>
-                                        </div>
-
-                                        <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-                                            <div className="flex items-center mb-2">
-                                                <div className="w-3 h-3 bg-red-500 rounded-full mr-2"></div>
-                                                <span className="font-medium text-red-800 dark:text-red-200">User B Isochrone</span>
-                                            </div>
-                                            <p className="text-sm text-red-600 dark:text-red-400">
-                                                {userBIsochrone.features.length} travel time areas generated
-                                            </p>
-                                            <details className="mt-2">
-                                                <summary className="text-xs text-red-500 cursor-pointer">Debug Info</summary>
-                                                <pre className="text-xs text-red-600 dark:text-red-400 mt-1 overflow-auto max-h-20">
-                                                    {JSON.stringify(userBIsochrone, null, 2)}
-                                                </pre>
-                                            </details>
-                                        </div>
-
-                                        {overlapArea && (
-                                            <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-                                                <div className="flex items-center mb-2">
-                                                    <div className="w-3 h-3 bg-green-500 rounded-full mr-2"></div>
-                                                    <span className="font-medium text-green-800 dark:text-green-200">Overlap Area</span>
-                                                </div>
-                                                <p className="text-sm text-green-600 dark:text-green-400">
-                                                    Meeting area found! Travel time: {overlapArea.properties.travelTime} minutes
-                                                </p>
-                                            </div>
-                                        )}
-
-                                        <div className="text-xs text-gray-500 dark:text-gray-400">
-                                            Map ready: {mapReady ? 'Yes' : 'No'} | Check the map to see the colored travel time areas and overlap
-                                        </div>
+                                {/* Contour Times (Multiple Travel Times) */}
+                                <div className="mb-4">
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                        Show Travel Time Contours
+                                    </label>
+                                    <div className="flex flex-wrap gap-2">
+                                        {[10, 20, 30, 40, 50, 60].map((time) => (
+                                            <label key={time} className="inline-flex items-center">
+                                                <input
+                                                    type="checkbox"
+                                                    className="rounded border-gray-300 text-primary shadow-sm focus:border-primary focus:ring focus:ring-primary focus:ring-opacity-50"
+                                                    checked={contourTimes.includes(time)}
+                                                    onChange={(e) => {
+                                                        if (e.target.checked) {
+                                                            setContourTimes([...contourTimes, time].sort((a, b) => a - b));
+                                                        } else {
+                                                            setContourTimes(contourTimes.filter((t) => t !== time));
+                                                        }
+                                                    }}
+                                                    disabled={time > maxTravelTime}
+                                                />
+                                                <span className="ml-1 text-sm">{time}m</span>
+                                            </label>
+                                        ))}
                                     </div>
-                                )}
+                                </div>
 
-                                {!userAIsochrone && !userBIsochrone && !isIsochroneLoading && (
-                                    <div className="p-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg">
-                                        <p className="text-gray-600 dark:text-gray-400 text-sm">
-                                            Isochrones will be generated automatically when both locations are selected
-                                        </p>
-                                    </div>
-                                )}
+                                {/* Generate Button */}
+                                <button
+                                    onClick={handleGenerateIsochrones}
+                                    disabled={isIsochroneLoading || !userALocation || !userBLocation}
+                                    className="w-full flex items-center justify-center py-3 bg-primary hover:bg-primary/90 text-white rounded-lg transition-colors disabled:opacity-70 disabled:cursor-not-allowed mt-4"
+                                >
+                                    {isIsochroneLoading ? (
+                                        <Loader2 size={18} className="mr-2 animate-spin" />
+                                    ) : (
+                                        <Users size={18} className="mr-2" />
+                                    )}
+                                    <span className="font-medium">
+                                        {isIsochroneLoading ? 'Generating...' : 'Generate Travel Time Areas'}
+                                    </span>
+                                </button>
                             </div>
+
+                            {/* Existing isochrone UI components */}
+                            {/* ... */}
                         </div>
                     )}
 
@@ -612,6 +642,55 @@ export default function MeetInMiddleMap({ className = '' }: MeetInMiddleMapProps
                     </div>
                 </div>
             )}
+
+            {/* Debug Info */}
+            <div className="absolute top-16 right-4 bg-white dark:bg-gray-800 rounded-lg shadow-lg p-4 max-w-xs w-full z-20">
+                <h3 className="font-semibold text-gray-900 dark:text-white text-sm mb-2">
+                    Debug Info
+                </h3>
+                <div className="text-xs text-gray-500 dark:text-gray-400 space-y-1">
+                    <div>
+                        <span className="font-medium text-gray-700 dark:text-gray-300">User A:</span> {userALocation ? `${userALocation.name} (${userALocation.coordinates.lng}, ${userALocation.coordinates.lat})` : 'Not set'}
+                    </div>
+                    <div>
+                        <span className="font-medium text-gray-700 dark:text-gray-300">User B:</span> {userBLocation ? `${userBLocation.name} (${userBLocation.coordinates.lng}, ${userBLocation.coordinates.lat})` : 'Not set'}
+                    </div>
+                    <div>
+                        <span className="font-medium text-gray-700 dark:text-gray-300">Meeting Spot:</span> {selectedPlace ? `${selectedPlace.name} (${selectedPlace.coordinates.lng}, ${selectedPlace.coordinates.lat})` : 'Not set'}
+                    </div>
+                    <div>
+                        <span className="font-medium text-gray-700 dark:text-gray-300">Travel Mode:</span> {travelMode}
+                    </div>
+                    <div>
+                        <span className="font-medium text-gray-700 dark:text-gray-300">Max Travel Time:</span> {maxTravelTime} minutes
+                    </div>
+                    <div>
+                        <span className="font-medium text-gray-700 dark:text-gray-300">Contour Times:</span> {contourTimes.length > 0 ? contourTimes.join(', ') : 'None'}
+                    </div>
+                    <div>
+                        <span className="font-medium text-gray-700 dark:text-gray-300">Current Step:</span> {currentStep}
+                    </div>
+                </div>
+
+                {/* Overlap Area Info - Only show if overlapArea is available */}
+                {overlapArea && (
+                    <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg mt-2">
+                        <div className="flex items-center mb-2">
+                            <div className="w-3 h-3 bg-green-500 rounded-full mr-2"></div>
+                            <span className="font-medium text-green-800 dark:text-green-200">Overlap Area</span>
+                        </div>
+                        <p className="text-sm text-green-600 dark:text-green-400">
+                            Meeting area found! Travel time: {overlapArea.properties.travelTime} minutes
+                        </p>
+                        <p className="text-sm text-green-600 dark:text-green-400">
+                            Area: {overlapArea.properties.area} km²
+                        </p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                            Travel mode: {travelMode} | Max time: {maxTravelTime}min
+                        </p>
+                    </div>
+                )}
+            </div>
         </div>
     );
 }

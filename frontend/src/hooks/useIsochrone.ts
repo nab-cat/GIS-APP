@@ -122,11 +122,11 @@ function calculateOverlapArea(
       type: 'Feature',
       geometry: {
         type: 'Polygon',
-        coordinates: intersection[0]
+        coordinates: intersection
       },
       properties: {
         area: parseFloat((area / 1000000).toFixed(2)), // Convert to km²
-        travelTime: Math.max(polygonA.properties.contour, polygonB.properties.contour),
+        travelTime: Math.min(polygonA.properties.contour, polygonB.properties.contour),
         userA: locationA.id,
         userB: locationB.id,
       },
