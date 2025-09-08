@@ -2,18 +2,17 @@
 import { useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
+import TwoPointSelector from "@/components/map/TwoPointSelector";
+import StepsIndicator from "@/components/map/StepsIndicator";
+import Navbar from "@/components/Navbar";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!;
 
 export default function Map() {
     const mapContainer = useRef<HTMLDivElement>(null);
     const mapRef = useRef<mapboxgl.Map | null>(null);
-    const markerRef = useRef<mapboxgl.Marker | null>(null);
-    const [isMenuOpen, setIsMenuOpen] = useState(false);
-    const [selectedLocation, setSelectedLocation] = useState<{ lng: string, lat: string } | null>(null);
-    const [isLocating, setIsLocating] = useState(false);
-    const [isManualMode, setIsManualMode] = useState(false);
-    const clickListenerRef = useRef<((e: mapboxgl.MapMouseEvent) => void) | null>(null);
+    const markersRef = useRef<mapboxgl.Marker[]>([]);
+    const [currentStep, setCurrentStep] = useState(0);
 
     useEffect(() => {
         // Initialize map only once
@@ -23,7 +22,7 @@ export default function Map() {
             container: mapContainer.current!,
             style: "mapbox://styles/nabcat/cmeogbsmg000j01sf76ji60t8",
             center: [106.8456, -6.2088], // Jakarta
-            zoom: 15,
+            zoom: 12,
         });
 
         mapRef.current = map;
@@ -31,208 +30,103 @@ export default function Map() {
         // Add navigation controls
         map.addControl(new mapboxgl.NavigationControl(), "top-right");
 
-        // Add a default marker for Jakarta
-        updateMarker(106.8456, -6.2088, "Jakarta");
-        setSelectedLocation({ lng: "106.8456", lat: "-6.2088" });
-
-        // Click Event to add markers
-        map.on("click", (e) => {
-            if (isManualMode) return; // Skip if we're in manual selection mode (handled separately)
-            
-            const { lng, lat } = e.lngLat;
-            updateMarker(lng, lat, "Selected Location");
-        });
-
         // Clean up function
         return () => {
             map.remove();
         };
-    }, [isManualMode]);
+    }, []);
 
-    // Update marker - centralized function to handle marker creation/updates
-    const updateMarker = (longitude: number, latitude: number, label: string) => {
-        // Format coordinates to 4 decimal places
-        const formattedLng = longitude.toFixed(4);
-        const formattedLat = latitude.toFixed(4);
-
-        // Update selected location
-        setSelectedLocation({ lng: formattedLng, lat: formattedLat });
-
-        // Create popup for location
-        const popup = createPopup(label, formattedLng, formattedLat);
-
-        // Remove existing marker if it exists
-        if (markerRef.current) {
-            markerRef.current.remove();
+    // Handle marker placement
+    const handleLocationSelected = (index: number, lng: number, lat: number, label: string) => {
+        if (!mapRef.current) return;
+        
+        // Remove existing marker at this index if it exists
+        if (markersRef.current[index]) {
+            markersRef.current[index].remove();
+            markersRef.current[index] = null!;
         }
-
-        // Add a new marker at the location
-        const newMarker = new mapboxgl.Marker({
-            color: "#3FB1CE",
-            draggable: false,
-            scale: 1.2
-        })
-            .setLngLat([longitude, latitude])
-            .setPopup(popup)
-            .addTo(mapRef.current!);
-
-        // Store reference to current marker
-        markerRef.current = newMarker;
-
-        // Show the popup by default
-        newMarker.togglePopup();
-    };
-
-    // Create a styled popup with location information
-    const createPopup = (title: string, longitude: string, latitude: string) => {
-        return new mapboxgl.Popup({ 
+        
+        // If this is a clear operation (empty label), return after removing marker
+        if (!label) return;
+        
+        // Create marker with color based on index (blue for first, red for second)
+        const markerColor = index === 0 ? "#3b82f6" : "#ef4444";
+        
+        // Create popup
+        const popup = new mapboxgl.Popup({ 
             offset: 25,
             closeButton: true,
-            closeOnClick: false,
-            maxWidth: "300px",
-            className: "custom-popup"
+            closeOnClick: false 
         }).setHTML(
-            `<div class="p-4 font-body">
-                <h3 class="font-bold text-lg mb-2 text-primary">${title}</h3>
-                <div class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 text-sm">
-                    <span class="font-medium text-gray-700 dark:text-gray-300">Longitude:</span>
-                    <span class="text-gray-900 dark:text-white font-mono">${longitude}</span>
-                    <span class="font-medium text-gray-700 dark:text-gray-300">Latitude:</span>
-                    <span class="text-gray-900 dark:text-white font-mono">${latitude}</span>
-                </div>
-                <div class="mt-3 text-xs text-gray-500 dark:text-gray-400">
-                    Click anywhere on map to update location
-                </div>
+            `<div class="p-3">
+                <h3 class="font-bold mb-1">${label}</h3>
+                <p class="text-sm text-gray-600">Long: ${lng.toFixed(4)} | Lat: ${lat.toFixed(4)}</p>
             </div>`
         );
-    };
-
-    // Handle location found (either automatically or manually)
-    const handleLocationFound = (longitude: number, latitude: number, label: string) => {
-        // Update marker with new location
-        updateMarker(longitude, latitude, label);
-
-        // Fly to location
-        mapRef.current!.flyTo({
-            center: [longitude, latitude],
-            zoom: 16,
-            speed: 1.5,
-            curve: 1,
-            essential: true
-        });
-    };
-
-    // Function to get current location with high accuracy
-    const getCurrentLocation = () => {
-        setIsLocating(true);
         
-        if (!navigator.geolocation) {
-            alert("Geolocation is not supported by your browser");
-            setIsLocating(false);
-            return;
-        }
+        // Add new marker
+        const marker = new mapboxgl.Marker({
+            color: markerColor,
+            draggable: false,
+        })
+            .setLngLat([lng, lat])
+            .setPopup(popup)
+            .addTo(mapRef.current);
         
-        // Now that we have HTTPS, this should work properly
-        const options = {
-            enableHighAccuracy: true,
-            timeout: 10000,
-            maximumAge: 0
-        };
+        // Save reference to marker
+        markersRef.current[index] = marker;
         
-        navigator.geolocation.getCurrentPosition(
-            (position) => {
-                console.log("Geolocation success!", position.coords);
-                const { longitude, latitude, accuracy } = position.coords;
-                
-                // Add accuracy information to the popup
-                handleLocationFound(longitude, latitude, 
-                    `My Location (±${Math.round(accuracy)}m)`);
-                setIsLocating(false);
-            },
-            (error) => {
-                console.error("Geolocation error:", error);
-                let message;
-                
-                switch(error.code) {
-                    case error.PERMISSION_DENIED:
-                        message = "You denied permission to access your location";
-                        break;
-                    case error.POSITION_UNAVAILABLE:
-                        message = "Location information is unavailable";
-                        break;
-                    case error.TIMEOUT:
-                        message = "The request to get your location timed out";
-                        break;
-                    default:
-                        message = error.message;
-                }
-                
-                alert(`Unable to get your location: ${message}`);
-                enableManualLocationPicker();
-                setIsLocating(false);
-            },
-            options
-        );
-    };
-
-    // Handle manual location picking
-    const enableManualLocationPicker = () => {
-        if (!mapRef.current) return;
-
-        // Set manual mode flag
-        setIsManualMode(true);
-
-        // Change cursor to indicate selection mode
-        mapRef.current.getCanvas().style.cursor = 'crosshair';
-
-        // Create click handler
-        const clickHandler = (e: mapboxgl.MapMouseEvent) => {
-            const { lng, lat } = e.lngLat;
-
-            // Process the selected location
-            handleLocationFound(lng, lat, "Selected Location");
-
-            // Reset the UI
-            if (mapRef.current) {
-                mapRef.current.getCanvas().style.cursor = '';
-                mapRef.current.off('click', clickHandler);
+        // Show popup
+        marker.togglePopup();
+        
+        // If both markers exist, update the map view to include both
+        setTimeout(() => {
+            if (markersRef.current[0] && markersRef.current[1]) {
+                fitMapToMarkers();
             }
-
-            setIsManualMode(false);
-            setIsLocating(false);
-        };
-
-        // Store reference to the handler for cleanup
-        clickListenerRef.current = clickHandler;
-
-        // Add the click listener
-        mapRef.current.on('click', clickHandler);
+        }, 100); // Small delay to ensure map and markers are ready
     };
-
-    // Function to remove marker
-    const removeMarker = () => {
-        if (markerRef.current) {
-            markerRef.current.remove();
-            markerRef.current = null;
-        }
+    
+    // Fit map to show both markers
+    const fitMapToMarkers = () => {
+        if (!mapRef.current) return;
         
-        setSelectedLocation(null);
+        // Check if we have both markers
+        const validMarkers = markersRef.current.filter(marker => marker);
+        if (validMarkers.length < 2) return;
+        
+        const bounds = new mapboxgl.LngLatBounds();
+        validMarkers.forEach(marker => {
+            bounds.extend(marker.getLngLat());
+        });
+        
+        mapRef.current.fitBounds(bounds, {
+            padding: { top: 100, bottom: 100, left: 100, right: 100 },
+            maxZoom: 15,
+            duration: 800  // Add smooth animation
+        });
     };
 
     return (
         <div className="relative w-full h-screen bg-white dark:bg-gray-900 font-body">
             {/* Map container */}
             <div ref={mapContainer} className="w-full h-screen" />
-
-            {/* Manual mode indicator */}
-            {isManualMode && (
-                <div className="absolute top-0 left-0 right-0 bg-primary text-white py-3 text-center font-medium shadow-lg">
-                    Click on the map to set your location
-                </div>
-            )}
-
-
-            {/* Add this style tag for custom popup styles */}
+            
+            {/* Steps Indicator at the top */}
+            <StepsIndicator currentStep={currentStep} />
+            
+            {/* Two Point Selector Control Panel */}
+            <div className="absolute bottom-20 left-1/2 transform -translate-x-1/2 z-20 w-full max-w-md px-4">
+                <TwoPointSelector 
+                    map={mapRef.current} 
+                    onLocationSelected={handleLocationSelected} 
+                />
+            </div>
+            
+            {/* Include the Navbar component at the bottom */}
+            <Navbar />
+            
+            {/* Custom styles for popups */}
             <style jsx global>{`
                 .mapboxgl-popup-content {
                     border-radius: 10px;
@@ -275,10 +169,6 @@ export default function Map() {
                 .dark .mapboxgl-popup-close-button:hover {
                     color: #ffffff;
                     background: rgba(255, 255, 255, 0.1);
-                }
-                
-                .mapboxgl-popup-tip {
-                    border-top-color: #1f2937 !important;
                 }
             `}</style>
         </div>
