@@ -249,7 +249,7 @@ export default function TwoPointSelector({ map, onLocationSelected, onNextStep }
                     : 'bg-gray-200 text-gray-400 cursor-not-allowed dark:bg-gray-700 dark:text-gray-500'}`}
                 disabled={!locations[0].selected || !locations[1].selected}
             >
-                Next Step: Calculate Meetup Areas
+                Next Step: Generate Isochrone
                 <ChevronRight size={16} className="inline ml-1" />
             </button>
         </div>

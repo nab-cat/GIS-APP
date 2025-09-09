@@ -1,14 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState } from 'react';
 import { Users, Clock, ChevronRight, AlertTriangle, Sliders } from 'lucide-react';
-import { calculateIntersection } from '@/utils/intersectionHelper';
 
 interface IsochroneOptionsProps {
     locations: [number, number][]; // Array of [lng, lat] coordinates
     onGenerateIsochrones: (options: IsochroneRequestOptions) => void;
     isLoading?: boolean;
-    isochroneData?: any; // The GeoJSON data returned from the API
-    onIntersectionCalculated?: (intersectionData: any) => void; // Callback for when intersection is calculated
 }
 
 export interface IsochroneRequestOptions {
@@ -30,9 +27,7 @@ export interface IsochroneRequestOptions {
 export default function IsochroneOptions({
     locations,
     onGenerateIsochrones,
-    isLoading = false,
-    isochroneData = null,
-    onIntersectionCalculated = () => {}
+    isLoading = false
 }: IsochroneOptionsProps) {
     // State for all the options
     const [rangeValues, setRangeValues] = useState<number[]>([30, 15]);
@@ -42,9 +37,6 @@ export default function IsochroneOptions({
     const [smoothing, setSmoothing] = useState<number>(25);
     const [locationType, setLocationType] = useState<'start' | 'destination'>('destination');
     const [avoidBorders, setAvoidBorders] = useState<'all' | 'controlled' | 'neither' | ''>('');
-    const [isIntersectionGenerated, setIsIntersectionGenerated] = useState<boolean>(false); 
-    const [isIntersectionChecking, setIsIntersectionChecking] = useState<boolean>(false);
-    const [noOverlappingAreas, setNoOverlappingAreas] = useState<boolean>(false);
 
     // Format time display
     const formatTime = (minutes: number) => {
@@ -383,98 +375,6 @@ export default function IsochroneOptions({
                         Generate Travel Time Areas
                     </>
                 )}
-            </button>
-
-            {/* Warning when there's no overlapping area */}
-            {noOverlappingAreas && (
-                <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-lg p-3 mt-4">
-                    <div className="flex items-center">
-                        <AlertTriangle className="w-5 h-5 text-yellow-500 mr-2" />
-                        <p className="text-sm text-yellow-700 dark:text-yellow-300">
-                            No overlapping areas found. Try adjusting the travel time or distance ranges to find a potential meeting area.
-                        </p>
-                    </div>
-                </div>
-            )}
-            
-            {/* Check Intersection Button */}
-            <button
-                onClick={() => {
-                    if (!isochroneData) {
-                        console.error("No isochrone data available for intersection calculation");
-                        return;
-                    }
-                    
-                    setIsIntersectionChecking(true);
-                    setNoOverlappingAreas(false); // Reset the warning state
-                    
-                    try {
-                        // Call the intersection helper with the isochrone data
-                        const intersectionResult = calculateIntersection(isochroneData);
-                        
-                        // Pass the result to the parent component via callback
-                        if (intersectionResult.success) {
-                            // Check if there are any features in the intersection
-                            if (intersectionResult.features && intersectionResult.features.length > 0) {
-                                onIntersectionCalculated(intersectionResult);
-                                setIsIntersectionGenerated(true);
-                                setNoOverlappingAreas(false);
-                                console.log("Intersection calculated successfully:", intersectionResult);
-                            } else {
-                                // No overlapping areas found
-                                setNoOverlappingAreas(true);
-                                setIsIntersectionGenerated(false);
-                                console.log("No overlapping areas found between the isochrones");
-                            }
-                        } else {
-                            console.error("Intersection calculation failed:", intersectionResult.error);
-                            alert(`Could not calculate intersection: ${intersectionResult.error}`);
-                        }
-                    } catch (error: any) {
-                        console.error("Error during intersection calculation:", error);
-                        alert(`Error calculating intersection: ${error.message}`);
-                    } finally {
-                        setIsIntersectionChecking(false);
-                    }
-                }}
-                disabled={!isochroneData || isLoading || isIntersectionChecking}
-                className={`w-full flex items-center justify-center py-3 rounded-lg transition-colors mt-4 font-medium
-          ${isochroneData && !isLoading && !isIntersectionChecking
-                        ? 'bg-primary hover:bg-primary/90 text-white'
-                        : 'bg-gray-200 text-gray-400 cursor-not-allowed dark:bg-gray-700 dark:text-gray-500'}`}
-            >
-                {isIntersectionChecking ? (
-                    <>
-                        <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        Checking Intersection...
-                    </>
-                ) : (
-                    <>
-                        <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
-                        </svg>
-                        Check Intersection
-                    </>
-                )}
-            </button>
-
-            {/* Next Step Button - only enabled after intersection is generated */}
-            <button
-                onClick={() => {
-                    // Add next step functionality here later
-                    console.log('Moving to next step');
-                }}
-                disabled={!isIntersectionGenerated}
-                className={`w-full flex items-center justify-center py-3 rounded-lg transition-colors mt-4 font-medium
-          ${isIntersectionGenerated
-                        ? 'bg-green-600 hover:bg-green-700 text-white'
-                        : 'bg-gray-200 text-gray-400 cursor-not-allowed dark:bg-gray-700 dark:text-gray-500'}`}
-            >
-                <ChevronRight size={18} className="mr-2" />
-                Next Step
             </button>
         </div>
     );

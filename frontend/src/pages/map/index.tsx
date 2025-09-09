@@ -6,6 +6,7 @@ import "mapbox-gl/dist/mapbox-gl.css";
 import TwoPointSelector from "@/components/map/TwoPointSelector";
 import StepsIndicator from "@/components/map/StepsIndicator";
 import IsochroneOptions, { IsochroneRequestOptions } from "@/components/map/IsochroneOptions";
+import MeetingPointOptions from "@/components/map/MeetingPointOptions";
 import Navbar from "@/components/Navbar";
 import { MapIcon, ChevronLeft } from "lucide-react";
 import { generateIsochrones } from "@/utils/api";
@@ -22,6 +23,8 @@ export default function Map() {
     const [selectedLocations, setSelectedLocations] = useState<[number, number][]>([]);
     const [isProcessingIsochrones, setIsProcessingIsochrones] = useState(false);
     const [isochroneData, setIsochroneData] = useState<any>(null);
+    const [intersectionData, setIntersectionData] = useState<any>(null);
+    const [meetingPoint, setMeetingPoint] = useState<[number, number] | null>(null);
     
     // Handle step navigation
     const goToNextStep = () => {
@@ -30,6 +33,12 @@ export default function Map() {
     
     const goToPreviousStep = () => {
         setCurrentStep(prev => Math.max(prev - 1, 0));
+    };
+    
+    // Handle meeting point selection
+    const handleMeetingPointSelected = (coords: [number, number]) => {
+        setMeetingPoint(coords);
+        console.log("Selected meeting point:", coords);
     };
 
     useEffect(() => {
@@ -162,6 +171,9 @@ export default function Map() {
             console.log("Map not available");
             return;
         }
+        
+        // Store the intersection data for use with the meeting point component
+        setIntersectionData(intersectionData);
         
         // If there are no features in the intersection data, clear any existing intersection layers
         if (!intersectionData || !intersectionData.features || intersectionData.features.length === 0) {
@@ -379,7 +391,9 @@ export default function Map() {
                 {/* Sidebar header */}
                 <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
                     <h2 className="font-heading text-lg font-semibold text-gray-900 dark:text-white">
-                        {currentStep === 0 ? "Select Locations" : "Travel Time Analysis"}
+                        {currentStep === 0 ? "Select Locations" : 
+                         currentStep === 1 ? "Travel Time Analysis" : 
+                         "Choose Meeting Location"}
                     </h2>
                     <button 
                         onClick={() => toggleSidebar(false)}
@@ -410,13 +424,19 @@ export default function Map() {
                             onLocationSelected={handleLocationSelected}
                             onNextStep={goToNextStep}
                         />
-                    ) : (
+                    ) : currentStep === 1 ? (
                         <IsochroneOptions
                             locations={selectedLocations}
                             onGenerateIsochrones={handleGenerateIsochrones}
                             isLoading={isProcessingIsochrones}
+                        />
+                    ) : (
+                        <MeetingPointOptions 
+                            map={mapRef.current}
                             isochroneData={isochroneData}
+                            onMeetingPointSelected={handleMeetingPointSelected}
                             onIntersectionCalculated={handleIntersectionCalculated}
+                            onNextStep={goToNextStep}
                         />
                     )}
                 </div>
