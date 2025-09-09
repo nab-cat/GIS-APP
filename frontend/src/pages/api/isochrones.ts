@@ -27,7 +27,6 @@ export default async function handler(
             range_type,
             attributes,
             intersections,
-            interval,
             location_type,
             smoothing,
             area_units,
@@ -63,7 +62,6 @@ export default async function handler(
             requestBody.intersections = intersections;
         }
         
-        if (interval) requestBody.interval = interval;
         if (location_type) requestBody.location_type = location_type;
         if (smoothing) requestBody.smoothing = smoothing;
         // Removed units parameter as it causes API errors

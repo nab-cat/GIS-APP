@@ -14,7 +14,6 @@ export interface IsochroneRequestOptions {
     range_type: 'time' | 'distance';
     attributes?: string[];
     intersections?: boolean | string;
-    interval?: number;
     location_type?: 'start' | 'destination';
     smoothing?: number;
     area_units?: 'm' | 'km' | 'mi'; // Only used if attributes includes "area"
@@ -36,7 +35,6 @@ export default function IsochroneOptions({
     const [transportMode, setTransportMode] = useState<string>('driving-car');
     const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
     const [smoothing, setSmoothing] = useState<number>(25);
-    const [interval, setInterval] = useState<number>(30);
     const [intersections, setIntersections] = useState<boolean>(true);
     const [locationType, setLocationType] = useState<'start' | 'destination'>('destination');
     const [avoidBorders, setAvoidBorders] = useState<'all' | 'controlled' | 'neither' | ''>('');
@@ -100,8 +98,6 @@ export default function IsochroneOptions({
             intersections
         };
 
-        // Removed units parameter as it causes API errors
-
         // Include area_units only when attributes includes "area"
         if (attributes.includes("area")) {
             options.area_units = 'km'; // Default to square kilometers
@@ -109,11 +105,6 @@ export default function IsochroneOptions({
 
         // Add optional parameters only if they're different from defaults
         if (smoothing !== 25) options.smoothing = smoothing;
-
-        // Only add interval if we have a single range value
-        if (rangeValues.length === 1 && interval) {
-            options.interval = rangeType === 'time' ? interval * 60 : interval;
-        }
 
         // Add avoid borders option if selected
         if (avoidBorders) {
@@ -244,7 +235,7 @@ export default function IsochroneOptions({
                                     <span>
                                         {rangeType === 'time' ? formatTime(value) : formatDistance(value)}
                                         {rangeType === 'time' &&
-                                            <span className="text-xs text-gray-400 ml-1">({value * 60} seconds)</span>
+                                            <span className="text-xs text-gray-400 ml-1">({value * 60}s)</span>
                                         }
                                     </span>
                                     <span>
@@ -331,7 +322,7 @@ export default function IsochroneOptions({
                         </div>
                     </div>
 
-                    {/* Distance Units section removed */}
+                    {/* Interval control removed */}
 
                     {/* Intersections */}
                     <div className="flex items-center">
