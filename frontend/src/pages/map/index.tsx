@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 import { useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
@@ -7,6 +8,7 @@ import StepsIndicator from "@/components/map/StepsIndicator";
 import IsochroneOptions, { IsochroneRequestOptions } from "@/components/map/IsochroneOptions";
 import Navbar from "@/components/Navbar";
 import { MapIcon, ChevronLeft } from "lucide-react";
+import { generateIsochrones } from "@/utils/api";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!;
 
@@ -153,17 +155,118 @@ export default function Map() {
     };
     
     // Handle isochrone generation
-    const handleGenerateIsochrones = (options: IsochroneRequestOptions) => {
+    const handleGenerateIsochrones = async (options: IsochroneRequestOptions) => {
         setIsProcessingIsochrones(true);
         
-        // Log the options for now (in a real app you'd make an API call)
-        console.log("Generating isochrones with options:", options);
-        
-        // Simulate API call
-        setTimeout(() => {
-            setIsProcessingIsochrones(false);
+        try {
+            // Ensure we have the right attributes for displaying area
+            if (!options.attributes) {
+                options.attributes = ["area"];
+            } else if (!options.attributes.includes("area")) {
+                options.attributes.push("area");
+            }
+            
+            const result = await generateIsochrones(options);
+            
+            // Clear any existing isochrone layers
+            if (mapRef.current) {
+                // Remove existing isochrone layers and sources
+                const map = mapRef.current;
+                const sources = map.getStyle().sources;
+                
+                Object.keys(sources).forEach(sourceId => {
+                    if (sourceId.startsWith('isochrone-')) {
+                        // Get related layers
+                        map.getStyle().layers.forEach(layer => {
+                            if (layer.source === sourceId) {
+                                map.removeLayer(layer.id);
+                            }
+                        });
+                        map.removeSource(sourceId);
+                    }
+                });
+                
+                // Add new isochrone data to the map
+                if (result && result.features) {
+                    // Group features by their group index
+                    const groupedFeatures: {[key: number]: any[]} = {};
+                    
+                    result.features.forEach((feature: any) => {
+                        const groupIndex = feature.properties.group_index;
+                        if (!groupedFeatures[groupIndex]) {
+                            groupedFeatures[groupIndex] = [];
+                        }
+                        groupedFeatures[groupIndex].push(feature);
+                    });
+                    
+                    // Add each group as a separate source and layer
+                    Object.entries(groupedFeatures).forEach(([groupIndex, features], idx) => {
+                        const sourceId = `isochrone-source-${groupIndex}`;
+                        const layerId = `isochrone-layer-${groupIndex}`;
+                        
+                        // Create a GeoJSON source
+                        map.addSource(sourceId, {
+                            type: 'geojson',
+                            data: {
+                                type: 'FeatureCollection',
+                                features: features
+                            }
+                        });
+                        
+                        // Create a fill layer for the isochrones
+                        // Use different colors for different groups (user A vs user B)
+                        const color = idx === 0 ? 
+                            ['#0088ff', '#66aaff'] : // blue for first user
+                            ['#ff4444', '#ff8888'];  // red for second user
+                        
+                        map.addLayer({
+                            id: layerId,
+                            type: 'fill',
+                            source: sourceId,
+                            layout: {},
+                            paint: {
+                                'fill-color': [
+                                    'match',
+                                    ['get', 'value'],
+                                    features[0].properties.value, color[0],
+                                    features.length > 1 ? features[1].properties.value : 0, color[1],
+                                    '#000000'
+                                ],
+                                'fill-opacity': 0.3,
+                                'fill-outline-color': '#000000'
+                            }
+                        });
+                        
+                        // If we have intersection data, add that as a separate layer
+                        if (options.intersections && idx === 1) { // Only after adding both isochrone layers
+                            // Add a layer for intersection area
+                            const intersectionLayerId = 'isochrone-intersection';
+                            
+                            // Use a combination of source-in and source-atop operations to show intersection
+                            map.addLayer({
+                                id: intersectionLayerId,
+                                type: 'fill',
+                                source: sourceId, // Use the second source
+                                layout: {},
+                                paint: {
+                                    'fill-color': '#00ff00', // Green for intersection
+                                    'fill-opacity': 0.5
+                                },
+                                filter: ['==', ['get', 'group_index'], 1] // Only for the second group
+                            }, layerId); // Place below the second isochrone layer
+                        }
+                    });
+                }
+            }
+            
+            // Move to next step in the UI
             goToNextStep();
-        }, 2000);
+        } catch (error) {
+            console.error("Error generating isochrones:", error);
+            alert("Failed to generate travel time areas. Please try again.");
+        } finally {
+            setIsProcessingIsochrones(false);
+        }
     };
 
     return (

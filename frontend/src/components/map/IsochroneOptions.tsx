@@ -12,14 +12,15 @@ export interface IsochroneRequestOptions {
     locations: [number, number][];
     range: number[];
     range_type: 'time' | 'distance';
+    attributes?: string[];
+    intersections?: boolean | string;
     interval?: number;
     location_type?: 'start' | 'destination';
     smoothing?: number;
-    attributes?: string[];
-    intersections?: boolean;
-    id?: string;
+    area_units?: 'm' | 'km' | 'mi'; // Only used if attributes includes "area"
+    profile?: string;
     options?: {
-        avoid_borders?: 'all' | 'controlled' | 'neither';
+        avoid_borders?: 'all' | 'controlled' | 'neither' | '';
         [key: string]: any;
     };
 }
@@ -30,13 +31,14 @@ export default function IsochroneOptions({
     isLoading = false
 }: IsochroneOptionsProps) {
     // State for all the options
-    const [rangeValues, setRangeValues] = useState<number[]>([30, 20, 10]);
+    const [rangeValues, setRangeValues] = useState<number[]>([30, 15]);
     const [rangeType, setRangeType] = useState<'time' | 'distance'>('time');
     const [transportMode, setTransportMode] = useState<string>('driving-car');
     const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
     const [smoothing, setSmoothing] = useState<number>(25);
-    const [interval, setInterval] = useState<number | null>(null);
-    const [intersections, setIntersections] = useState<boolean>(false);
+    const [interval, setInterval] = useState<number>(30);
+    const [intersections, setIntersections] = useState<boolean>(true);
+    const [locationType, setLocationType] = useState<'start' | 'destination'>('destination');
     const [avoidBorders, setAvoidBorders] = useState<'all' | 'controlled' | 'neither' | ''>('');
 
     // Format time display
@@ -80,17 +82,43 @@ export default function IsochroneOptions({
 
     // Generate isochrones with current options
     const handleGenerateClick = () => {
+        // Convert minutes to seconds if range_type is time
+        const convertedRangeValues = rangeType === 'time'
+            ? rangeValues.map(v => v * 60) // Convert minutes to seconds
+            : rangeValues;
+
+        // Define attributes array with "area" for area calculations
+        const attributes = ["area"];
+
         const options: IsochroneRequestOptions = {
-            locations: locations,
-            range: rangeValues,
+            locations,
+            range: convertedRangeValues,
             range_type: rangeType,
+            profile: transportMode,
+            location_type: locationType,
+            attributes,
             intersections
         };
 
-        // Add optional parameters only if they're set
-        if (interval) options.interval = interval;
+        // Removed units parameter as it causes API errors
+
+        // Include area_units only when attributes includes "area"
+        if (attributes.includes("area")) {
+            options.area_units = 'km'; // Default to square kilometers
+        }
+
+        // Add optional parameters only if they're different from defaults
         if (smoothing !== 25) options.smoothing = smoothing;
-        if (avoidBorders) options.options = { avoid_borders: avoidBorders };
+
+        // Only add interval if we have a single range value
+        if (rangeValues.length === 1 && interval) {
+            options.interval = rangeType === 'time' ? interval * 60 : interval;
+        }
+
+        // Add avoid borders option if selected
+        if (avoidBorders) {
+            options.options = { avoid_borders: avoidBorders };
+        }
 
         onGenerateIsochrones(options);
     };
@@ -118,9 +146,21 @@ export default function IsochroneOptions({
                 </label>
                 <div className="grid grid-cols-3 gap-2">
                     {[
-                        { id: 'driving-car', name: 'Driving', icon: '🚗' },
-                        { id: 'cycling-regular', name: 'Cycling', icon: '🚲' },
-                        { id: 'foot-walking', name: 'Walking', icon: '👣' },
+                        {
+                            id: 'driving-car',
+                            name: 'Driving',
+                            icon: '🚗'
+                        },
+                        {
+                            id: 'cycling-regular',
+                            name: 'Cycling',
+                            icon: '🚲'
+                        },
+                        {
+                            id: 'foot-walking',
+                            name: 'Walking',
+                            icon: '👣'
+                        },
                     ].map((mode) => (
                         <button
                             key={mode.id}
@@ -203,6 +243,9 @@ export default function IsochroneOptions({
                                     </span>
                                     <span>
                                         {rangeType === 'time' ? formatTime(value) : formatDistance(value)}
+                                        {rangeType === 'time' &&
+                                            <span className="text-xs text-gray-400 ml-1">({value * 60} seconds)</span>
+                                        }
                                     </span>
                                     <span>
                                         {rangeType === 'time' ? '60m' : '5km'}
@@ -261,6 +304,35 @@ export default function IsochroneOptions({
                         </div>
                     </div>
 
+                    {/* Location Type */}
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            Location Type
+                        </label>
+                        <div className="flex space-x-2">
+                            <button
+                                onClick={() => setLocationType('start')}
+                                className={`flex-1 py-2 px-3 rounded-lg border transition-colors text-sm
+                  ${locationType === 'start'
+                                        ? 'border-primary bg-primary/10 text-primary'
+                                        : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400'}`}
+                            >
+                                Starting Point
+                            </button>
+                            <button
+                                onClick={() => setLocationType('destination')}
+                                className={`flex-1 py-2 px-3 rounded-lg border transition-colors text-sm
+                  ${locationType === 'destination'
+                                        ? 'border-primary bg-primary/10 text-primary'
+                                        : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400'}`}
+                            >
+                                Destination
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Distance Units section removed */}
+
                     {/* Intersections */}
                     <div className="flex items-center">
                         <input
@@ -288,7 +360,6 @@ export default function IsochroneOptions({
                             <option value="">Don`t avoid borders</option>
                             <option value="all">Avoid all borders</option>
                             <option value="controlled">Avoid controlled borders</option>
-                            <option value="neither">No border restrictions</option>
                         </select>
                     </div>
                 </div>
