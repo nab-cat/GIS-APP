@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { MapPin, ChevronRight, X, Search, MapIcon, Compass } from 'lucide-react';
+import { MapPin, ChevronRight, X, Search, MapIcon, Compass, Loader2 } from 'lucide-react';
 import mapboxgl from 'mapbox-gl';
 
 interface TwoPointSelectorProps {
@@ -9,11 +9,12 @@ interface TwoPointSelectorProps {
 
 export default function TwoPointSelector({ map, onLocationSelected }: TwoPointSelectorProps) {
     const [activeSelector, setActiveSelector] = useState<number | null>(null);
-    const [locations, setLocations] = useState<Array<{ name: string, selected: boolean }>>([
-        { name: "User A Location", selected: false },
-        { name: "User B Location", selected: false }
+    const [locations, setLocations] = useState<Array<{ name: string, selected: boolean, isCurrentLocation: boolean }>>([
+        { name: "User A Location", selected: false, isCurrentLocation: false },
+        { name: "User B Location", selected: false, isCurrentLocation: false }
     ]);
     const [showPickerHint, setShowPickerHint] = useState<boolean>(false);
+    const [geolocating, setGeolocating] = useState<number | null>(null); // Track which location is being geolocated
 
     // Change cursor to indicate selection mode
     useEffect(() => {
@@ -73,12 +74,68 @@ export default function TwoPointSelector({ map, onLocationSelected }: TwoPointSe
         setLocations(prevLocations => {
             const newLocations = [...prevLocations];
             newLocations[index].selected = false;
+            newLocations[index].isCurrentLocation = false; // Reset the current location flag
             return newLocations;
         });
 
         // Tell the parent to remove the marker
         onLocationSelected(index, 0, 0, "");
     };
+
+    // Handle current location button
+    const handleCurrentLocation = (index: number) => {
+        if (!map) return;
+        
+        // Set loading state for this button
+        setGeolocating(index);
+        
+        // Use browser's geolocation API
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    const { longitude, latitude } = position.coords;
+                    
+                    // Call the parent function to handle this location
+                    onLocationSelected(index, longitude, latitude, locations[index].name);
+                    
+                    // Update local state to show this location is selected and is a current location
+                    setLocations(prevLocations => {
+                        const newLocations = [...prevLocations];
+                        newLocations[index].selected = true;
+                        newLocations[index].isCurrentLocation = true;
+                        return newLocations;
+                    });
+                    
+                    // Fly to the user's location
+                    map.flyTo({
+                        center: [longitude, latitude],
+                        zoom: 14,
+                        essential: true
+                    });
+                    
+                    // Clear loading state
+                    setGeolocating(null);
+                },
+                (error) => {
+                    // Handle errors
+                    console.error("Geolocation error:", error);
+                    alert("Unable to retrieve your location. Please check your browser permissions.");
+                    setGeolocating(null);
+                },
+                {
+                    enableHighAccuracy: true,
+                    timeout: 10000,
+                    maximumAge: 0
+                }
+            );
+        } else {
+            alert("Geolocation is not supported by this browser.");
+            setGeolocating(null);
+        }
+    };
+
+    // Check if any location is using current location
+    const isAnyLocationUsingCurrentLocation = locations.some(loc => loc.isCurrentLocation);
 
     return (
         <div className="space-y-6">
@@ -118,24 +175,41 @@ export default function TwoPointSelector({ map, onLocationSelected }: TwoPointSe
 
                         {/* Location Selection Buttons */}
                         <div className="flex space-x-2 mb-3">
-                            {/* Current Location Button - Placeholder functionality */}
+                            {/* Current Location Button with geolocation functionality */}
                             <button
-                                className="flex-1 flex items-center justify-center py-2.5 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-white rounded-lg transition-colors"
+                                onClick={() => handleCurrentLocation(index)}
+                                disabled={
+                                    (geolocating !== null && geolocating !== index) || 
+                                    (isAnyLocationUsingCurrentLocation && !location.isCurrentLocation)
+                                }
+                                className={`flex-1 flex items-center justify-center py-2.5 rounded-lg transition-colors
+                                    ${geolocating === index ? 'bg-primary/70 text-white cursor-wait' : 
+                                    (geolocating !== null && geolocating !== index) || 
+                                    (isAnyLocationUsingCurrentLocation && !location.isCurrentLocation) ? 
+                                        'bg-gray-200 text-gray-400 cursor-not-allowed dark:bg-gray-700 dark:text-gray-500' : 
+                                        'bg-primary hover:bg-primary/90 text-white'}`}
                             >
-                                <Compass size={18} className="mr-2" />
+                                {geolocating === index ? (
+                                    <Loader2 size={18} className="mr-2 animate-spin" />
+                                ) : (
+                                    <Compass size={18} className="mr-2" />
+                                )}
                                 <span className="font-medium">
-                                    Current Location
+                                    {geolocating === index ? 'Getting Location...' : 'My Location'}
                                 </span>
                             </button>
 
                             {/* Map Picker Button */}
                             <button
                                 onClick={() => handlePickOnMap(index)}
+                                disabled={geolocating !== null}
                                 className={`flex-1 flex items-center justify-center py-2.5 
-                    ${activeSelector === index 
+                                    ${activeSelector === index 
                                     ? 'bg-primary text-white' 
-                                    : 'bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-white'} 
-                    rounded-lg transition-colors`}
+                                    : geolocating !== null
+                                        ? 'bg-gray-200 text-gray-400 cursor-not-allowed dark:bg-gray-700 dark:text-gray-500'
+                                        : 'bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-white'} 
+                                    rounded-lg transition-colors`}
                             >
                                 <MapIcon size={18} className="mr-2" />
                                 <span className="font-medium">
@@ -151,6 +225,13 @@ export default function TwoPointSelector({ map, onLocationSelected }: TwoPointSe
                                 Location selected
                             </div>
                         )}
+                        
+                        {/* Add explanation when button is disabled */}
+                        {isAnyLocationUsingCurrentLocation && !location.isCurrentLocation && location.selected === false && (
+                            <div className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+                                Current location already used for another point
+                            </div>
+                        )}
                     </div>
                 ))}
             </div>
@@ -162,9 +243,9 @@ export default function TwoPointSelector({ map, onLocationSelected }: TwoPointSe
                     console.log('Moving to next step - both locations selected');
                 }}
                 className={`w-full mt-6 py-3 rounded-lg transition-colors font-medium
-            ${locations[0].selected && locations[1].selected
-                        ? 'bg-primary hover:bg-primary/90 text-white' 
-                        : 'bg-gray-200 text-gray-400 cursor-not-allowed dark:bg-gray-700 dark:text-gray-500'}`}
+                    ${locations[0].selected && locations[1].selected
+                    ? 'bg-primary hover:bg-primary/90 text-white' 
+                    : 'bg-gray-200 text-gray-400 cursor-not-allowed dark:bg-gray-700 dark:text-gray-500'}`}
                 disabled={!locations[0].selected || !locations[1].selected}
             >
                 Next Step: Calculate Meetup Areas

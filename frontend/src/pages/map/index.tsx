@@ -15,7 +15,7 @@ export default function Map() {
     const markersRef = useRef<mapboxgl.Marker[]>([]);
     const [currentStep, setCurrentStep] = useState(0);
     const [showPickerHint, setShowPickerHint] = useState(false);
-    const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false); // Start with sidebar closed
 
     useEffect(() => {
         // Initialize map only once
@@ -32,6 +32,18 @@ export default function Map() {
 
         // Add navigation controls
         map.addControl(new mapboxgl.NavigationControl(), "top-right");
+        
+        // Add global geolocate control for the map
+        map.addControl(
+            new mapboxgl.GeolocateControl({
+                positionOptions: {
+                    enableHighAccuracy: true
+                },
+                trackUserLocation: true,
+                showUserHeading: true
+            }),
+            "top-right"
+        );
 
         // Clean up function
         return () => {
