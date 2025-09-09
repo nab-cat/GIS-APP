@@ -13,7 +13,6 @@ export interface IsochroneRequestOptions {
     range: number[];
     range_type: 'time' | 'distance';
     attributes?: string[];
-    intersections?: boolean | string;
     location_type?: 'start' | 'destination';
     smoothing?: number;
     area_units?: 'm' | 'km' | 'mi'; // Only used if attributes includes "area"
@@ -35,9 +34,10 @@ export default function IsochroneOptions({
     const [transportMode, setTransportMode] = useState<string>('driving-car');
     const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
     const [smoothing, setSmoothing] = useState<number>(25);
-    const [intersections, setIntersections] = useState<boolean>(true);
     const [locationType, setLocationType] = useState<'start' | 'destination'>('destination');
     const [avoidBorders, setAvoidBorders] = useState<'all' | 'controlled' | 'neither' | ''>('');
+    const [isIntersectionGenerated, setIsIntersectionGenerated] = useState<boolean>(false); 
+    const [isIntersectionChecking, setIsIntersectionChecking] = useState<boolean>(false);
 
     // Format time display
     const formatTime = (minutes: number) => {
@@ -94,8 +94,7 @@ export default function IsochroneOptions({
             range_type: rangeType,
             profile: transportMode,
             location_type: locationType,
-            attributes,
-            intersections
+            attributes
         };
 
         // Include area_units only when attributes includes "area"
@@ -324,20 +323,6 @@ export default function IsochroneOptions({
 
                     {/* Interval control removed */}
 
-                    {/* Intersections */}
-                    <div className="flex items-center">
-                        <input
-                            id="intersections"
-                            type="checkbox"
-                            checked={intersections}
-                            onChange={(e) => setIntersections(e.target.checked)}
-                            className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
-                        />
-                        <label htmlFor="intersections" className="ml-2 text-sm text-gray-700 dark:text-gray-300">
-                            Show intersections between areas
-                        </label>
-                    </div>
-
                     {/* Avoid Borders */}
                     <div>
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -391,6 +376,56 @@ export default function IsochroneOptions({
                         Generate Travel Time Areas
                     </>
                 )}
+            </button>
+
+            {/* Check Intersection Button */}
+            <button
+                onClick={() => {
+                    setIsIntersectionChecking(true);
+                    // Dummy action for now, later will call actual helper function
+                    setTimeout(() => {
+                        setIsIntersectionChecking(false);
+                        setIsIntersectionGenerated(true);
+                    }, 1000);
+                }}
+                disabled={!hasValidLocations || isLoading || isIntersectionChecking}
+                className={`w-full flex items-center justify-center py-3 rounded-lg transition-colors mt-4 font-medium
+          ${hasValidLocations && !isLoading && !isIntersectionChecking
+                        ? 'bg-primary hover:bg-primary/90 text-white'
+                        : 'bg-gray-200 text-gray-400 cursor-not-allowed dark:bg-gray-700 dark:text-gray-500'}`}
+            >
+                {isIntersectionChecking ? (
+                    <>
+                        <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Checking Intersection...
+                    </>
+                ) : (
+                    <>
+                        <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+                        </svg>
+                        Check Intersection
+                    </>
+                )}
+            </button>
+
+            {/* Next Step Button - only enabled after intersection is generated */}
+            <button
+                onClick={() => {
+                    // Add next step functionality here later
+                    console.log('Moving to next step');
+                }}
+                disabled={!isIntersectionGenerated}
+                className={`w-full flex items-center justify-center py-3 rounded-lg transition-colors mt-4 font-medium
+          ${isIntersectionGenerated
+                        ? 'bg-green-600 hover:bg-green-700 text-white'
+                        : 'bg-gray-200 text-gray-400 cursor-not-allowed dark:bg-gray-700 dark:text-gray-500'}`}
+            >
+                <ChevronRight size={18} className="mr-2" />
+                Next Step
             </button>
         </div>
     );
