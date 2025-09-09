@@ -6,7 +6,6 @@ export async function generateIsochrones(options: IsochroneRequestOptions): Prom
         // Convert boolean intersections to string as required by ORS API
         const requestOptions = {
             ...options,
-            intersections: options.intersections ? "true" : "false"
         };
 
         const response = await fetch('/api/isochrones', {

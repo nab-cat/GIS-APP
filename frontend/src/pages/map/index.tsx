@@ -21,6 +21,7 @@ export default function Map() {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false); // Start with sidebar open
     const [selectedLocations, setSelectedLocations] = useState<[number, number][]>([]);
     const [isProcessingIsochrones, setIsProcessingIsochrones] = useState(false);
+    const [isochroneData, setIsochroneData] = useState<any>(null);
     
     // Handle step navigation
     const goToNextStep = () => {
@@ -155,6 +156,99 @@ export default function Map() {
     };
     
     // Handle isochrone generation
+    // Handle displaying intersection data on the map
+    const handleIntersectionCalculated = (intersectionData: any) => {
+        if (!mapRef.current) {
+            console.log("Map not available");
+            return;
+        }
+        
+        // If there are no features in the intersection data, clear any existing intersection layers
+        if (!intersectionData || !intersectionData.features || intersectionData.features.length === 0) {
+            const map = mapRef.current;
+            
+            // Remove any existing intersection layers
+            if (map.getLayer('isochrone-intersection-border')) {
+                map.removeLayer('isochrone-intersection-border');
+            }
+            
+            if (map.getLayer('isochrone-intersection')) {
+                map.removeLayer('isochrone-intersection');
+            }
+            
+            if (map.getSource('isochrone-intersection-source')) {
+                map.removeSource('isochrone-intersection-source');
+            }
+            
+            console.log("No intersection found, layers removed");
+            return;
+        }
+
+        const map = mapRef.current;
+        
+        // Remove any existing intersection layers
+        if (map.getLayer('isochrone-intersection')) {
+            map.removeLayer('isochrone-intersection');
+        }
+        
+        if (map.getSource('isochrone-intersection-source')) {
+            map.removeSource('isochrone-intersection-source');
+        }
+        
+        // Add intersection data as a new source
+        map.addSource('isochrone-intersection-source', {
+            type: 'geojson',
+            data: intersectionData
+        });
+        
+        // Add a layer for the intersection area with a distinctive style
+        map.addLayer({
+            id: 'isochrone-intersection',
+            type: 'fill',
+            source: 'isochrone-intersection-source',
+            layout: {},
+            paint: {
+                'fill-color': '#00ff00', // Green color for intersection
+                'fill-opacity': 0.6,
+                'fill-outline-color': '#008800' // Darker green outline
+            }
+        });
+        
+        // Add a border to make it more visible
+        map.addLayer({
+            id: 'isochrone-intersection-border',
+            type: 'line',
+            source: 'isochrone-intersection-source',
+            layout: {},
+            paint: {
+                'line-color': '#008800',
+                'line-width': 2
+            }
+        });
+        
+        // Fit the map to show the intersection area
+        const bounds = new mapboxgl.LngLatBounds();
+        
+        intersectionData.features.forEach((feature: any) => {
+            if (feature.geometry.type === 'Polygon') {
+                feature.geometry.coordinates[0].forEach((coord: [number, number]) => {
+                    bounds.extend(coord);
+                });
+            } else if (feature.geometry.type === 'MultiPolygon') {
+                feature.geometry.coordinates.forEach((polygon: any) => {
+                    polygon[0].forEach((coord: [number, number]) => {
+                        bounds.extend(coord);
+                    });
+                });
+            }
+        });
+        
+        map.fitBounds(bounds, {
+            padding: { top: 100, bottom: 100, left: 100, right: 100 },
+            maxZoom: 15
+        });
+    };
+
     const handleGenerateIsochrones = async (options: IsochroneRequestOptions) => {
         setIsProcessingIsochrones(true);
         
@@ -167,6 +261,9 @@ export default function Map() {
             }
             
             const result = await generateIsochrones(options);
+            
+            // Store the isochrone data for later use with intersection calculation
+            setIsochroneData(result);
             
             // Clear any existing isochrone layers
             if (mapRef.current) {
@@ -318,6 +415,8 @@ export default function Map() {
                             locations={selectedLocations}
                             onGenerateIsochrones={handleGenerateIsochrones}
                             isLoading={isProcessingIsochrones}
+                            isochroneData={isochroneData}
+                            onIntersectionCalculated={handleIntersectionCalculated}
                         />
                     )}
                 </div>

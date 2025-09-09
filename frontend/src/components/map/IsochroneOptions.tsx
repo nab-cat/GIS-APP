@@ -1,11 +1,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState } from 'react';
 import { Users, Clock, ChevronRight, AlertTriangle, Sliders } from 'lucide-react';
+import { calculateIntersection } from '@/utils/intersectionHelper';
 
 interface IsochroneOptionsProps {
     locations: [number, number][]; // Array of [lng, lat] coordinates
     onGenerateIsochrones: (options: IsochroneRequestOptions) => void;
     isLoading?: boolean;
+    isochroneData?: any; // The GeoJSON data returned from the API
+    onIntersectionCalculated?: (intersectionData: any) => void; // Callback for when intersection is calculated
 }
 
 export interface IsochroneRequestOptions {
@@ -13,6 +16,7 @@ export interface IsochroneRequestOptions {
     range: number[];
     range_type: 'time' | 'distance';
     attributes?: string[];
+    intersections?: boolean | string;
     location_type?: 'start' | 'destination';
     smoothing?: number;
     area_units?: 'm' | 'km' | 'mi'; // Only used if attributes includes "area"
@@ -26,7 +30,9 @@ export interface IsochroneRequestOptions {
 export default function IsochroneOptions({
     locations,
     onGenerateIsochrones,
-    isLoading = false
+    isLoading = false,
+    isochroneData = null,
+    onIntersectionCalculated = () => {}
 }: IsochroneOptionsProps) {
     // State for all the options
     const [rangeValues, setRangeValues] = useState<number[]>([30, 15]);
@@ -38,6 +44,7 @@ export default function IsochroneOptions({
     const [avoidBorders, setAvoidBorders] = useState<'all' | 'controlled' | 'neither' | ''>('');
     const [isIntersectionGenerated, setIsIntersectionGenerated] = useState<boolean>(false); 
     const [isIntersectionChecking, setIsIntersectionChecking] = useState<boolean>(false);
+    const [noOverlappingAreas, setNoOverlappingAreas] = useState<boolean>(false);
 
     // Format time display
     const formatTime = (minutes: number) => {
@@ -378,19 +385,61 @@ export default function IsochroneOptions({
                 )}
             </button>
 
+            {/* Warning when there's no overlapping area */}
+            {noOverlappingAreas && (
+                <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-lg p-3 mt-4">
+                    <div className="flex items-center">
+                        <AlertTriangle className="w-5 h-5 text-yellow-500 mr-2" />
+                        <p className="text-sm text-yellow-700 dark:text-yellow-300">
+                            No overlapping areas found. Try adjusting the travel time or distance ranges to find a potential meeting area.
+                        </p>
+                    </div>
+                </div>
+            )}
+            
             {/* Check Intersection Button */}
             <button
                 onClick={() => {
+                    if (!isochroneData) {
+                        console.error("No isochrone data available for intersection calculation");
+                        return;
+                    }
+                    
                     setIsIntersectionChecking(true);
-                    // Dummy action for now, later will call actual helper function
-                    setTimeout(() => {
+                    setNoOverlappingAreas(false); // Reset the warning state
+                    
+                    try {
+                        // Call the intersection helper with the isochrone data
+                        const intersectionResult = calculateIntersection(isochroneData);
+                        
+                        // Pass the result to the parent component via callback
+                        if (intersectionResult.success) {
+                            // Check if there are any features in the intersection
+                            if (intersectionResult.features && intersectionResult.features.length > 0) {
+                                onIntersectionCalculated(intersectionResult);
+                                setIsIntersectionGenerated(true);
+                                setNoOverlappingAreas(false);
+                                console.log("Intersection calculated successfully:", intersectionResult);
+                            } else {
+                                // No overlapping areas found
+                                setNoOverlappingAreas(true);
+                                setIsIntersectionGenerated(false);
+                                console.log("No overlapping areas found between the isochrones");
+                            }
+                        } else {
+                            console.error("Intersection calculation failed:", intersectionResult.error);
+                            alert(`Could not calculate intersection: ${intersectionResult.error}`);
+                        }
+                    } catch (error: any) {
+                        console.error("Error during intersection calculation:", error);
+                        alert(`Error calculating intersection: ${error.message}`);
+                    } finally {
                         setIsIntersectionChecking(false);
-                        setIsIntersectionGenerated(true);
-                    }, 1000);
+                    }
                 }}
-                disabled={!hasValidLocations || isLoading || isIntersectionChecking}
+                disabled={!isochroneData || isLoading || isIntersectionChecking}
                 className={`w-full flex items-center justify-center py-3 rounded-lg transition-colors mt-4 font-medium
-          ${hasValidLocations && !isLoading && !isIntersectionChecking
+          ${isochroneData && !isLoading && !isIntersectionChecking
                         ? 'bg-primary hover:bg-primary/90 text-white'
                         : 'bg-gray-200 text-gray-400 cursor-not-allowed dark:bg-gray-700 dark:text-gray-500'}`}
             >
