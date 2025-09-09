@@ -2,12 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { MapPin, ChevronRight, X, Search, MapIcon, Compass, Loader2 } from 'lucide-react';
 import mapboxgl from 'mapbox-gl';
 
+// Add onNextStep prop to the interface
 interface TwoPointSelectorProps {
     map: mapboxgl.Map | null;
     onLocationSelected: (index: number, lng: number, lat: number, label: string) => void;
+    onNextStep?: () => void;
 }
 
-export default function TwoPointSelector({ map, onLocationSelected }: TwoPointSelectorProps) {
+export default function TwoPointSelector({ map, onLocationSelected, onNextStep }: TwoPointSelectorProps) {
     const [activeSelector, setActiveSelector] = useState<number | null>(null);
     const [locations, setLocations] = useState<Array<{ name: string, selected: boolean, isCurrentLocation: boolean }>>([
         { name: "User A Location", selected: false, isCurrentLocation: false },
@@ -239,8 +241,7 @@ export default function TwoPointSelector({ map, onLocationSelected }: TwoPointSe
             {/* Continue button - becomes active when both locations are selected */}
             <button
                 onClick={() => {
-                    // Here you would normally navigate to the next step
-                    console.log('Moving to next step - both locations selected');
+                    if (onNextStep) onNextStep();
                 }}
                 className={`w-full mt-6 py-3 rounded-lg transition-colors font-medium
                     ${locations[0].selected && locations[1].selected

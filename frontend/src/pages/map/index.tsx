@@ -4,8 +4,9 @@ import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import TwoPointSelector from "@/components/map/TwoPointSelector";
 import StepsIndicator from "@/components/map/StepsIndicator";
+import IsochroneOptions, { IsochroneRequestOptions } from "@/components/map/IsochroneOptions";
 import Navbar from "@/components/Navbar";
-import { MapIcon } from "lucide-react";
+import { MapIcon, ChevronLeft } from "lucide-react";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!;
 
@@ -15,7 +16,18 @@ export default function Map() {
     const markersRef = useRef<mapboxgl.Marker[]>([]);
     const [currentStep, setCurrentStep] = useState(0);
     const [showPickerHint, setShowPickerHint] = useState(false);
-    const [isSidebarOpen, setIsSidebarOpen] = useState(false); // Start with sidebar closed
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false); // Start with sidebar open
+    const [selectedLocations, setSelectedLocations] = useState<[number, number][]>([]);
+    const [isProcessingIsochrones, setIsProcessingIsochrones] = useState(false);
+    
+    // Handle step navigation
+    const goToNextStep = () => {
+        setCurrentStep(prev => Math.min(prev + 1, 3));
+    };
+    
+    const goToPreviousStep = () => {
+        setCurrentStep(prev => Math.max(prev - 1, 0));
+    };
 
     useEffect(() => {
         // Initialize map only once
@@ -62,7 +74,15 @@ export default function Map() {
         }
         
         // If this is a clear operation (empty label), return after removing marker
-        if (!label) return;
+        if (!label) {
+            // Update our selected locations array
+            const newLocations = [...selectedLocations];
+            if (newLocations[index]) {
+                newLocations[index] = null!;
+                setSelectedLocations(newLocations.filter(Boolean) as [number, number][]);
+            }
+            return;
+        }
         
         // Create marker with color based on index (blue for first, red for second)
         const markerColor = index === 0 ? "#3b82f6" : "#ef4444";
@@ -93,6 +113,11 @@ export default function Map() {
         
         // Show popup
         marker.togglePopup();
+        
+        // Update our selected locations array
+        const newLocations = [...selectedLocations];
+        newLocations[index] = [lng, lat];
+        setSelectedLocations(newLocations.filter(Boolean) as [number, number][]);
         
         // If both markers exist, update the map view to include both
         setTimeout(() => {
@@ -126,6 +151,20 @@ export default function Map() {
             duration: 800  // Add smooth animation
         });
     };
+    
+    // Handle isochrone generation
+    const handleGenerateIsochrones = (options: IsochroneRequestOptions) => {
+        setIsProcessingIsochrones(true);
+        
+        // Log the options for now (in a real app you'd make an API call)
+        console.log("Generating isochrones with options:", options);
+        
+        // Simulate API call
+        setTimeout(() => {
+            setIsProcessingIsochrones(false);
+            goToNextStep();
+        }, 2000);
+    };
 
     return (
         <div className="relative w-full h-screen bg-white dark:bg-gray-900 font-body">
@@ -140,7 +179,7 @@ export default function Map() {
                 {/* Sidebar header */}
                 <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
                     <h2 className="font-heading text-lg font-semibold text-gray-900 dark:text-white">
-                        Select Locations
+                        {currentStep === 0 ? "Select Locations" : "Travel Time Analysis"}
                     </h2>
                     <button 
                         onClick={() => toggleSidebar(false)}
@@ -154,10 +193,30 @@ export default function Map() {
                 
                 {/* Sidebar content - scrollable area */}
                 <div className="flex-1 overflow-y-auto p-4">
-                    <TwoPointSelector 
-                        map={mapRef.current} 
-                        onLocationSelected={handleLocationSelected}
-                    />
+                    {/* Step back button if not on first step */}
+                    {currentStep > 0 && (
+                        <button 
+                            onClick={goToPreviousStep}
+                            className="mb-4 flex items-center text-gray-600 dark:text-gray-400 hover:text-primary"
+                        >
+                            <ChevronLeft size={18} />
+                            <span>Back to locations</span>
+                        </button>
+                    )}
+                    
+                    {currentStep === 0 ? (
+                        <TwoPointSelector 
+                            map={mapRef.current} 
+                            onLocationSelected={handleLocationSelected}
+                            onNextStep={goToNextStep}
+                        />
+                    ) : (
+                        <IsochroneOptions
+                            locations={selectedLocations}
+                            onGenerateIsochrones={handleGenerateIsochrones}
+                            isLoading={isProcessingIsochrones}
+                        />
+                    )}
                 </div>
             </div>
             
