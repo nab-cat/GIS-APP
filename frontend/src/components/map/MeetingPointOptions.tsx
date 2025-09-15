@@ -1,8 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState } from 'react';
-import { MapPin, Search, Compass, AlertTriangle, ChevronRight } from 'lucide-react';
+import { MapPin, Search, Compass, AlertTriangle, ChevronRight, Info } from 'lucide-react';
 import mapboxgl from 'mapbox-gl';
 import { calculateIntersection } from '@/utils/intersectionHelper';
+import { ReverseGeocodingOptions } from '@/utils/geocodingHelper';
 
 interface MeetingPointOptionsProps {
     map: mapboxgl.Map | null;
@@ -36,6 +37,9 @@ export default function MeetingPointOptions({
     const [isSearchingPOIs, setIsSearchingPOIs] = useState<boolean>(false);
     const [pois, setPois] = useState<POI[]>([]);
     const [selectedPOI, setSelectedPOI] = useState<string | null>(null);
+    const [locationInfo, setLocationInfo] = useState<any>(null);
+    const [isLoadingLocationInfo, setIsLoadingLocationInfo] = useState<boolean>(false);
+    const [geocodingRadius, setGeocodingRadius] = useState<number>(10); // Default radius for reverse geocoding
     
     // Intersection related states
     const [isIntersectionGenerated, setIsIntersectionGenerated] = useState<boolean>(false);
@@ -170,6 +174,48 @@ export default function MeetingPointOptions({
         return ((p1[0] - p0[0]) * (point[1] - p0[1]) - (point[0] - p0[0]) * (p1[1] - p0[1]));
     };
     
+    // Function to perform reverse geocoding
+    const performReverseGeocoding = async (coords: [number, number]) => {
+        setIsLoadingLocationInfo(true);
+        
+        try {
+            // Call the API to get location info
+            const response = await fetch('/api/reverse-geocode', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    point: {
+                        lon: coords[0],
+                        lat: coords[1]
+                    },
+                    boundaryCircleRadius: geocodingRadius,
+                    size: 5,
+                    layers: ['venue', 'street', 'locality', 'neighbourhood', 'borough', 'address'],
+                    sources: ['openstreetmap', 'openaddresses', 'whosonfirst', 'geonames']
+                }),
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Failed to perform reverse geocoding');
+            }
+
+            const data = await response.json();
+            setLocationInfo(data.data);
+            console.log('Reverse geocoding results:', data.data);
+            
+            // You could process the data here to extract the most relevant information
+            
+        } catch (error: any) {
+            console.error('Error during reverse geocoding:', error);
+            // Optionally show an error message
+        } finally {
+            setIsLoadingLocationInfo(false);
+        }
+    };
+    
     // Function to handle meeting point selection
     const handlePickMeetingPoint = () => {
         if (!map) return;
@@ -229,6 +275,9 @@ export default function MeetingPointOptions({
                     essential: true,
                     duration: 1000
                 });
+                
+                // Perform reverse geocoding
+                performReverseGeocoding(coords);
             } else {
                 setSelectedPoint(coords);
                 setIsValidPoint(false);
@@ -474,14 +523,84 @@ export default function MeetingPointOptions({
                             <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-lg p-3 mt-4">
                                 <div className="flex items-center">
                                     <MapPin className="w-5 h-5 text-green-500 mr-2" />
-                                    <div>
+                                    <div className="w-full">
                                         <p className="text-sm font-medium text-green-700 dark:text-green-300">
                                             Meeting point selected
                                         </p>
                                         <p className="text-xs text-green-600 dark:text-green-400">
                                             Coordinates: {selectedPoint[0].toFixed(6)}, {selectedPoint[1].toFixed(6)}
                                         </p>
-                                        <div className="flex justify-end mt-2">
+                                        
+                                        {/* Location info from reverse geocoding */}
+                                        {isLoadingLocationInfo && (
+                                            <div className="mt-2 flex items-center text-sm text-gray-600">
+                                                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-gray-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                                </svg>
+                                                Looking up location...
+                                            </div>
+                                        )}
+                                        
+                                        {locationInfo && locationInfo.features && locationInfo.features.length > 0 && (
+                                            <div className="mt-2">
+                                                <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                                                    Location Details
+                                                </p>
+                                                <ul className="text-xs text-gray-600 dark:text-gray-400 mt-1 space-y-1">
+                                                    {locationInfo.features.slice(0, 2).map((feature: any, index: number) => (
+                                                        <li key={index} className="flex items-start">
+                                                            <span className="mr-1">•</span>
+                                                            <span>
+                                                                {feature.properties.label || 
+                                                                 feature.properties.name || 
+                                                                 (feature.properties.street ? 
+                                                                    `${feature.properties.housenumber || ''} ${feature.properties.street}` : 
+                                                                    'Unknown location')}
+                                                            </span>
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        )}
+                                        
+                                        {/* Geocoding radius slider */}
+                                        <div className="mt-3">
+                                            <label 
+                                                htmlFor="geocoding-radius" 
+                                                className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1"
+                                            >
+                                                Search radius: {geocodingRadius} m
+                                            </label>
+                                            <input
+                                                type="range"
+                                                id="geocoding-radius"
+                                                min="5"
+                                                max="50"
+                                                step="5"
+                                                value={geocodingRadius}
+                                                onChange={(e) => {
+                                                    const newRadius = parseInt(e.target.value);
+                                                    setGeocodingRadius(newRadius);
+                                                    if (selectedPoint) {
+                                                        performReverseGeocoding(selectedPoint);
+                                                    }
+                                                }}
+                                                className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
+                                            />
+                                        </div>
+                                        
+                                        <div className="flex justify-between items-center mt-2">
+                                            {/* Test button for geocoding */}
+                                            {!locationInfo && !isLoadingLocationInfo && (
+                                                <button
+                                                    onClick={() => selectedPoint && performReverseGeocoding(selectedPoint)}
+                                                    className="text-xs px-2 py-1 rounded bg-indigo-500 hover:bg-indigo-600 text-white"
+                                                >
+                                                    Test Geocoding
+                                                </button>
+                                            )}
+                                            
                                             <button 
                                                 onClick={handlePickMeetingPoint} 
                                                 className="text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 underline"
@@ -489,6 +608,20 @@ export default function MeetingPointOptions({
                                                 Pick a different point
                                             </button>
                                         </div>
+                                        
+                                        {/* Next button to find nearby POIs */}
+                                        {selectedPoint && isValidPoint && (
+                                            <div className="mt-4">
+                                                <button
+                                                    onClick={handleSearchPOIs}
+                                                    className="w-full flex items-center justify-center py-2 rounded-lg transition-colors font-medium
+                                                        bg-blue-500 hover:bg-blue-600 text-white"
+                                                >
+                                                    <Search size={18} className="mr-2" />
+                                                    Find Nearby Points of Interest
+                                                </button>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             </div>
