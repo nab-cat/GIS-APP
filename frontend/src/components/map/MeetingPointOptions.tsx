@@ -1,9 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState } from 'react';
-import { MapPin, Search, Compass, AlertTriangle, ChevronRight, Info } from 'lucide-react';
+import { MapPin, Search, Compass, AlertTriangle, ChevronRight } from 'lucide-react';
 import mapboxgl from 'mapbox-gl';
 import { calculateIntersection } from '@/utils/intersectionHelper';
-import { ReverseGeocodingOptions } from '@/utils/geocodingHelper';
 
 interface MeetingPointOptionsProps {
     map: mapboxgl.Map | null;
@@ -34,12 +33,42 @@ export default function MeetingPointOptions({
     const [selectedPoint, setSelectedPoint] = useState<[number, number] | null>(null);
     const [isValidPoint, setIsValidPoint] = useState<boolean>(false);
     const [isPickingPoint, setIsPickingPoint] = useState<boolean>(false);
-    const [isSearchingPOIs, setIsSearchingPOIs] = useState<boolean>(false);
     const [pois, setPois] = useState<POI[]>([]);
     const [selectedPOI, setSelectedPOI] = useState<string | null>(null);
     const [locationInfo, setLocationInfo] = useState<any>(null);
     const [isLoadingLocationInfo, setIsLoadingLocationInfo] = useState<boolean>(false);
     const [geocodingRadius, setGeocodingRadius] = useState<number>(10); // Default radius for reverse geocoding
+    const [geocodingResultsCount, setGeocodingResultsCount] = useState<number>(10); // Default number of results
+    
+    // Sources for geocoding
+    const [selectedSources, setSelectedSources] = useState<{
+        openstreetmap: boolean;
+        openaddresses: boolean;
+        whosonfirst: boolean;
+        geonames: boolean;
+    }>({
+        openstreetmap: true,
+        openaddresses: true,
+        whosonfirst: true,
+        geonames: true
+    });
+    
+    // Layers for geocoding
+    const [selectedLayers, setSelectedLayers] = useState<{
+        venue: boolean;
+        street: boolean;
+        locality: boolean;
+        neighbourhood: boolean;
+        borough: boolean;
+        address: boolean;
+    }>({
+        venue: true,
+        street: true,
+        locality: true,
+        neighbourhood: true,
+        borough: true,
+        address: true
+    });
     
     // Intersection related states
     const [isIntersectionGenerated, setIsIntersectionGenerated] = useState<boolean>(false);
@@ -138,47 +167,23 @@ export default function MeetingPointOptions({
         return inside;
     };
     
-    // Alternative implementation for winding number algorithm
-    // This can be used as a fallback if the ray casting algorithm has issues
-    const pointInPolygonWinding = (point: [number, number], polygon: [number, number][]): boolean => {
-        let wn = 0; // Winding number counter
-        
-        // Loop through all edges of the polygon
-        for (let i = 0; i < polygon.length - 1; i++) {
-            if (polygon[i][1] <= point[1]) {
-                // Current point y is above or equal to test point
-                if (polygon[i+1][1] > point[1]) {
-                    // Next point y is strictly above test point
-                    if (isLeft(polygon[i], polygon[i+1], point) > 0) {
-                        // Test point is to the left of edge
-                        wn++;
-                    }
-                }
-            } else {
-                // Current point y is below test point
-                if (polygon[i+1][1] <= point[1]) {
-                    // Next point y is below or equal to test point
-                    if (isLeft(polygon[i], polygon[i+1], point) < 0) {
-                        // Test point is to the right of edge
-                        wn--;
-                    }
-                }
-            }
-        }
-        
-        return wn !== 0;
-    };
-    
-    // Helper function for winding algorithm
-    const isLeft = (p0: [number, number], p1: [number, number], point: [number, number]): number => {
-        return ((p1[0] - p0[0]) * (point[1] - p0[1]) - (point[0] - p0[0]) * (p1[1] - p0[1]));
-    };
+    // Removed unused point-in-polygon functions
     
     // Function to perform reverse geocoding
     const performReverseGeocoding = async (coords: [number, number]) => {
         setIsLoadingLocationInfo(true);
+        setPois([]); // Clear any previous POIs
         
         try {
+            // Get selected sources and layers
+            const sources = Object.keys(selectedSources).filter(
+                key => selectedSources[key as keyof typeof selectedSources]
+            );
+            
+            const layers = Object.keys(selectedLayers).filter(
+                key => selectedLayers[key as keyof typeof selectedLayers]
+            );
+            
             // Call the API to get location info
             const response = await fetch('/api/reverse-geocode', {
                 method: 'POST',
@@ -191,9 +196,9 @@ export default function MeetingPointOptions({
                         lat: coords[1]
                     },
                     boundaryCircleRadius: geocodingRadius,
-                    size: 5,
-                    layers: ['venue', 'street', 'locality', 'neighbourhood', 'borough', 'address'],
-                    sources: ['openstreetmap', 'openaddresses', 'whosonfirst', 'geonames']
+                    size: geocodingResultsCount,
+                    layers: layers.length > 0 ? layers : undefined,
+                    sources: sources.length > 0 ? sources : undefined
                 }),
             });
 
@@ -206,14 +211,92 @@ export default function MeetingPointOptions({
             setLocationInfo(data.data);
             console.log('Reverse geocoding results:', data.data);
             
-            // You could process the data here to extract the most relevant information
-            
+            // Convert results to POIs for display
+            if (data.data && data.data.features && data.data.features.length > 0) {
+                const poiResults: POI[] = data.data.features.map((feature: any, index: number) => {
+                    const props = feature.properties;
+                    return {
+                        id: props.id || `poi-${index}`,
+                        name: props.name || props.label || 'Unnamed location',
+                        category: props.layer || 'Unknown',
+                        distance: props.distance ? Math.round(props.distance * 1000) : null, // Convert to meters
+                        address: props.label || '',
+                        coordinates: feature.geometry ? 
+                            [feature.geometry.coordinates[0], feature.geometry.coordinates[1]] :
+                            coords // Default to meeting point if no coordinates
+                    };
+                });
+                
+                setPois(poiResults);
+                
+                // Add POI markers to the map
+                addPOIMarkersToMap(poiResults);
+            }
         } catch (error: any) {
             console.error('Error during reverse geocoding:', error);
             // Optionally show an error message
         } finally {
             setIsLoadingLocationInfo(false);
         }
+    };
+    
+    // Function to add POI markers to the map
+    const addPOIMarkersToMap = (poiList: POI[]) => {
+        if (!map) return;
+        
+        // Remove any existing POI markers
+        const existingMarkers = document.querySelectorAll('.mapboxgl-marker');
+        existingMarkers.forEach(marker => {
+            if (marker.classList.contains('poi-marker')) {
+                marker.remove();
+            }
+        });
+        
+        // Add new markers for each POI
+        poiList.forEach((poi) => {
+            // Create a custom marker element
+            const markerElement = document.createElement('div');
+            markerElement.className = 'poi-marker';
+            
+            // Create a marker
+            const marker = new mapboxgl.Marker({
+                element: markerElement,
+                color: "#3b82f6", // Blue color for POIs
+                scale: 0.8
+            })
+                .setLngLat(poi.coordinates)
+                .addTo(map);
+                
+            // Add a popup with POI info
+            const popup = new mapboxgl.Popup({
+                closeButton: false,
+                closeOnClick: true,
+                offset: 25
+            })
+                .setHTML(`
+                    <div class="p-2">
+                        <h3 class="font-bold text-sm">${poi.name}</h3>
+                        <p class="text-xs text-gray-600">${poi.category}</p>
+                        ${poi.distance ? `<p class="text-xs">${poi.distance}m away</p>` : ''}
+                    </div>
+                `);
+                
+            // Show popup on hover
+            markerElement.addEventListener('mouseenter', () => {
+                marker.setPopup(popup);
+                popup.addTo(map);
+            });
+            
+            // Hide popup when mouse leaves
+            markerElement.addEventListener('mouseleave', () => {
+                popup.remove();
+            });
+            
+            // Select POI on click
+            markerElement.addEventListener('click', () => {
+                setSelectedPOI(poi.id);
+            });
+        });
     };
     
     // Function to handle meeting point selection
@@ -310,67 +393,7 @@ export default function MeetingPointOptions({
         document.addEventListener('keydown', escapeHandler);
     };
     
-    // Function to handle searching for POIs
-    const handleSearchPOIs = () => {
-        if (!selectedPoint || !isValidPoint) return;
-        
-        setIsSearchingPOIs(true);
-        
-        // Simulate an API call with a timeout
-        setTimeout(() => {
-            // Dummy POIs data for testing
-            const dummyPOIs: POI[] = [
-                {
-                    id: "poi-1",
-                    name: "Central Park Café",
-                    category: "Restaurant",
-                    distance: 120,
-                    address: "123 Park Avenue",
-                    coordinates: [106.845, -6.208]
-                },
-                {
-                    id: "poi-2",
-                    name: "City Library",
-                    category: "Public Service",
-                    distance: 230,
-                    address: "45 Main Street",
-                    coordinates: [106.846, -6.209]
-                },
-                {
-                    id: "poi-3",
-                    name: "Tech Hub Coworking",
-                    category: "Office",
-                    distance: 310,
-                    address: "78 Innovation Boulevard",
-                    coordinates: [106.844, -6.207]
-                },
-                {
-                    id: "poi-4",
-                    name: "Green Space Park",
-                    category: "Leisure",
-                    distance: 150,
-                    address: "90 Nature Way",
-                    coordinates: [106.847, -6.206]
-                },
-                {
-                    id: "poi-5",
-                    name: "Metro Station",
-                    category: "Transportation",
-                    distance: 180,
-                    address: "Transit Hub",
-                    coordinates: [106.843, -6.210]
-                }
-            ];
-            
-            // Sort POIs by distance
-            const sortedPOIs = [...dummyPOIs].sort((a, b) => a.distance - b.distance);
-            setPois(sortedPOIs);
-            
-            // Move to the POI selection section
-            setCurrentSection(2);
-            setIsSearchingPOIs(false);
-        }, 1500);
-    };
+    // Removed unused handleViewPOIs function
     
     // Function to handle POI selection
     const handleSelectPOI = (poiId: string) => {
@@ -393,6 +416,27 @@ export default function MeetingPointOptions({
                 animation: marker-pulse 1.5s infinite;
             }
             
+            .poi-marker {
+                background-color: #3b82f6;
+                border-radius: 50%;
+                width: 14px;
+                height: 14px;
+                border: 2px solid white;
+                box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.4);
+                cursor: pointer;
+                transition: all 0.2s ease;
+            }
+            
+            .poi-marker:hover {
+                transform: scale(1.2);
+                box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.6);
+            }
+            
+            .poi-marker.selected {
+                background-color: #f59e0b;
+                box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.6);
+            }
+            
             @keyframes marker-pulse {
                 0% {
                     box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
@@ -403,6 +447,13 @@ export default function MeetingPointOptions({
                 100% {
                     box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
                 }
+            }
+            
+            .mapboxgl-popup-content {
+                padding: 10px;
+                border-radius: 6px;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+                box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
             }
         `;
         document.head.appendChild(style);
@@ -425,6 +476,24 @@ export default function MeetingPointOptions({
                         ? "Pick a meeting point within the overlapping area" 
                         : "Select a nearby point of interest for your meeting"}
                 </p>
+            </div>
+            
+            {/* Step indicators */}
+            <div className="flex mb-6">
+                <div 
+                    className={`flex-1 text-center border-b-2 pb-2 ${
+                        currentSection === 1 ? 'border-primary text-primary font-medium' : 'border-gray-200 text-gray-500'
+                    }`}
+                >
+                    1. Find Meeting Point
+                </div>
+                <div 
+                    className={`flex-1 text-center border-b-2 pb-2 ${
+                        currentSection === 2 ? 'border-primary text-primary font-medium' : 'border-gray-200 text-gray-500'
+                    }`}
+                >
+                    2. Choose Location
+                </div>
             </div>
             
             {currentSection === 1 ? (
@@ -564,43 +633,127 @@ export default function MeetingPointOptions({
                                             </div>
                                         )}
                                         
-                                        {/* Geocoding radius slider */}
-                                        <div className="mt-3">
-                                            <label 
-                                                htmlFor="geocoding-radius" 
-                                                className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1"
-                                            >
-                                                Search radius: {geocodingRadius} m
-                                            </label>
-                                            <input
-                                                type="range"
-                                                id="geocoding-radius"
-                                                min="5"
-                                                max="50"
-                                                step="5"
-                                                value={geocodingRadius}
-                                                onChange={(e) => {
-                                                    const newRadius = parseInt(e.target.value);
-                                                    setGeocodingRadius(newRadius);
-                                                    if (selectedPoint) {
-                                                        performReverseGeocoding(selectedPoint);
-                                                    }
-                                                }}
-                                                className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
-                                            />
-                                        </div>
-                                        
-                                        <div className="flex justify-between items-center mt-2">
-                                            {/* Test button for geocoding */}
-                                            {!locationInfo && !isLoadingLocationInfo && (
-                                                <button
-                                                    onClick={() => selectedPoint && performReverseGeocoding(selectedPoint)}
-                                                    className="text-xs px-2 py-1 rounded bg-indigo-500 hover:bg-indigo-600 text-white"
+                                        {/* Geocoding options section */}
+                                        <div className="mt-4 pt-3 border-t border-gray-200 dark:border-gray-700">
+                                            <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                                Nearby Search Options
+                                            </h4>
+                                            
+                                            {/* Radius slider */}
+                                            <div className="mb-3">
+                                                <label 
+                                                    htmlFor="geocoding-radius" 
+                                                    className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1"
                                                 >
-                                                    Test Geocoding
+                                                    Search radius: {geocodingRadius} m
+                                                </label>
+                                                <input
+                                                    type="range"
+                                                    id="geocoding-radius"
+                                                    min="5"
+                                                    max="100"
+                                                    step="5"
+                                                    value={geocodingRadius}
+                                                    onChange={(e) => {
+                                                        const newRadius = parseInt(e.target.value);
+                                                        setGeocodingRadius(newRadius);
+                                                    }}
+                                                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
+                                                />
+                                            </div>
+                                            
+                                            {/* Results count */}
+                                            <div className="mb-3">
+                                                <label 
+                                                    htmlFor="results-count" 
+                                                    className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1"
+                                                >
+                                                    Number of results: {geocodingResultsCount}
+                                                </label>
+                                                <input
+                                                    type="range"
+                                                    id="results-count"
+                                                    min="1"
+                                                    max="20"
+                                                    step="1"
+                                                    value={geocodingResultsCount}
+                                                    onChange={(e) => {
+                                                        setGeocodingResultsCount(parseInt(e.target.value));
+                                                    }}
+                                                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
+                                                />
+                                            </div>
+                                            
+                                            {/* Sources checkboxes */}
+                                            <div className="mb-3">
+                                                <p className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                                    Data sources:
+                                                </p>
+                                                <div className="grid grid-cols-2 gap-1">
+                                                    {Object.keys(selectedSources).map(source => (
+                                                        <label key={source} className="inline-flex items-center text-xs text-gray-600 dark:text-gray-400">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={selectedSources[source as keyof typeof selectedSources]}
+                                                                onChange={() => {
+                                                                    setSelectedSources({
+                                                                        ...selectedSources,
+                                                                        [source]: !selectedSources[source as keyof typeof selectedSources]
+                                                                    });
+                                                                }}
+                                                                className="form-checkbox h-3 w-3 text-blue-600 rounded mr-1"
+                                                            />
+                                                            {source}
+                                                        </label>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                            
+                                            {/* Layers checkboxes */}
+                                            <div className="mb-3">
+                                                <p className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                                    Place types:
+                                                </p>
+                                                <div className="grid grid-cols-2 gap-1">
+                                                    {Object.keys(selectedLayers).map(layer => (
+                                                        <label key={layer} className="inline-flex items-center text-xs text-gray-600 dark:text-gray-400">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={selectedLayers[layer as keyof typeof selectedLayers]}
+                                                                onChange={() => {
+                                                                    setSelectedLayers({
+                                                                        ...selectedLayers,
+                                                                        [layer]: !selectedLayers[layer as keyof typeof selectedLayers]
+                                                                    });
+                                                                }}
+                                                                className="form-checkbox h-3 w-3 text-blue-600 rounded mr-1"
+                                                            />
+                                                            {layer}
+                                                        </label>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                            
+                                            {/* Search button */}
+                                            <button
+                                                onClick={() => selectedPoint && performReverseGeocoding(selectedPoint)}
+                                                className="w-full text-center py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm rounded mt-2"
+                                            >
+                                                Search Nearby Locations
+                                            </button>
+                                            
+                                            {/* View Results button - only shown when POIs are available */}
+                                            {pois.length > 0 && (
+                                                <button
+                                                    onClick={() => setCurrentSection(2)}
+                                                    className="w-full text-center py-2 bg-green-500 hover:bg-green-600 text-white text-sm rounded mt-2"
+                                                >
+                                                    View {pois.length} Results
                                                 </button>
                                             )}
-                                            
+                                        </div>
+                                        
+                                                        <div className="flex justify-end mt-2">
                                             <button 
                                                 onClick={handlePickMeetingPoint} 
                                                 className="text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 underline"
@@ -608,63 +761,81 @@ export default function MeetingPointOptions({
                                                 Pick a different point
                                             </button>
                                         </div>
-                                        
-                                        {/* Next button to find nearby POIs */}
-                                        {selectedPoint && isValidPoint && (
-                                            <div className="mt-4">
-                                                <button
-                                                    onClick={handleSearchPOIs}
-                                                    className="w-full flex items-center justify-center py-2 rounded-lg transition-colors font-medium
-                                                        bg-blue-500 hover:bg-blue-600 text-white"
-                                                >
-                                                    <Search size={18} className="mr-2" />
-                                                    Find Nearby Points of Interest
-                                                </button>
-                                            </div>
-                                        )}
                                     </div>
                                 </div>
                             </div>
                         )}
                     </div>
                     
-                    {/* Find nearby POIs button - only enabled if a valid point is selected */}
-                    <button
-                        onClick={handleSearchPOIs}
-                        disabled={!selectedPoint || !isValidPoint || isSearchingPOIs}
-                        className={`w-full flex items-center justify-center py-3 rounded-lg transition-colors mt-4 font-medium
-                            ${selectedPoint && isValidPoint && !isSearchingPOIs
-                                ? 'bg-primary hover:bg-primary/90 text-white'
-                                : 'bg-gray-200 text-gray-400 cursor-not-allowed dark:bg-gray-700 dark:text-gray-500'}`}
-                    >
-                        {isSearchingPOIs ? (
-                            <>
-                                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                </svg>
-                                Searching Nearby Locations...
-                            </>
-                        ) : (
-                            <>
-                                <Search size={18} className="mr-2" />
-                                Find Nearby Places
-                            </>
-                        )}
-                    </button>
+                    {/* POI Results Section */}
+                    {pois && pois.length > 0 && (
+                        <div className="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
+                            <div className="flex justify-between items-center mb-3">
+                                <h4 className="font-medium text-gray-800 dark:text-gray-200">
+                                    Found {pois.length} Nearby Locations
+                                </h4>
+                                <button
+                                    onClick={() => setCurrentSection(1)}
+                                    className="flex items-center text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                                    </svg>
+                                    Back to Search
+                                </button>
+                            </div>
+                            <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
+                                {pois.map((poi) => (
+                                    <div
+                                        key={poi.id}
+                                        onClick={() => handleSelectPOI(poi.id)}
+                                        className={`w-full flex items-start p-3 rounded-lg border cursor-pointer transition-colors
+                                            ${selectedPOI === poi.id
+                                                ? 'border-primary bg-primary/5 text-primary shadow-sm'
+                                                : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'}`}
+                                    >
+                                        <MapPin 
+                                            size={18} 
+                                            className={`mt-0.5 mr-2 flex-shrink-0 ${selectedPOI === poi.id ? 'text-primary' : 'text-gray-500'}`}
+                                        />
+                                        <div className="flex-grow">
+                                            <p className={`text-sm font-medium ${selectedPOI === poi.id ? 'text-primary' : 'text-gray-800 dark:text-gray-200'}`}>
+                                                {poi.name || 'Unnamed Location'}
+                                            </p>
+                                            <div className="flex justify-between items-center mt-1">
+                                                <span className="text-xs bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 px-1.5 py-0.5 rounded">
+                                                    {poi.category || 'Place'}
+                                                </span>
+                                                {poi.distance !== null && (
+                                                    <span className="text-xs font-medium text-gray-600 dark:text-gray-400">
+                                                        {poi.distance}m
+                                                    </span>
+                                                )}
+                                            </div>
+                                            {poi.address && (
+                                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">
+                                                    {poi.address}
+                                                </p>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                 </>
             ) : (
                 <>
                     {/* POI Selection Section */}
                     <div className="mb-4">
-                        <h4 className="font-medium text-gray-800 dark:text-gray-200 mb-2">Nearby Points of Interest</h4>
+                        <h4 className="font-medium text-gray-800 dark:text-gray-200 mb-2">Location Details</h4>
                         <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
-                            Select a location from the list below or choose your own meeting point
+                            Select a location from the list or return to adjust your meeting point
                         </p>
                         
                         {/* POI List */}
-                        <div className="space-y-2 mt-4">
-                            {pois.map((poi) => (
+                        <div className="space-y-2 mt-4 max-h-80 overflow-y-auto pr-1">
+                            {pois.length > 0 ? pois.map((poi) => (
                                 <button
                                     key={poi.id}
                                     onClick={() => handleSelectPOI(poi.id)}
@@ -679,16 +850,68 @@ export default function MeetingPointOptions({
                                             <p className={`font-medium ${selectedPOI === poi.id ? 'text-primary' : 'text-gray-800 dark:text-gray-200'}`}>
                                                 {poi.name}
                                             </p>
-                                            <p className="text-xs text-gray-500 dark:text-gray-400">
-                                                {poi.category} · {poi.address}
-                                            </p>
+                                            <div className="flex flex-wrap gap-1 mt-1">
+                                                <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300">
+                                                    {poi.category}
+                                                </span>
+                                                {poi.distance !== null && (
+                                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300">
+                                                        {poi.distance}m
+                                                    </span>
+                                                )}
+                                            </div>
+                                            {poi.address && (
+                                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                                    {poi.address}
+                                                </p>
+                                            )}
                                         </div>
                                     </div>
-                                    <span className={`text-sm ${selectedPOI === poi.id ? 'text-primary' : 'text-gray-500 dark:text-gray-400'}`}>
-                                        {poi.distance}m
-                                    </span>
                                 </button>
-                            ))}
+                            )) : (
+                                <div className="text-center py-8">
+                                    <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-gray-100 dark:bg-gray-800 mb-3">
+                                        <Search className="h-6 w-6 text-gray-500 dark:text-gray-400" />
+                                    </div>
+                                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">No locations found</p>
+                                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                        Try adjusting your search radius or filters
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+                        
+                        {/* Search options section */}
+                        <div className="mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
+                            <h4 className="text-sm font-medium text-gray-800 dark:text-gray-200 mb-2">Search Options</h4>
+                            
+                            {/* Radius slider */}
+                            <div className="mb-3">
+                                <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">
+                                    Radius: {geocodingRadius}m
+                                </label>
+                                <input
+                                    type="range"
+                                    min="5"
+                                    max="100"
+                                    step="5"
+                                    value={geocodingRadius}
+                                    onChange={(e) => setGeocodingRadius(parseInt(e.target.value))}
+                                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
+                                />
+                            </div>
+                            
+                            {/* Search button */}
+                            <button
+                                onClick={() => selectedPoint && performReverseGeocoding(selectedPoint)}
+                                disabled={isLoadingLocationInfo || !selectedPoint}
+                                className={`w-full py-2 rounded-md mt-2 text-sm font-medium
+                                    ${!isLoadingLocationInfo 
+                                        ? 'bg-blue-500 hover:bg-blue-600 text-white' 
+                                        : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}
+                            >
+                                {isLoadingLocationInfo ? 'Searching...' : 'Search Again'}
+                            </button>
                         </div>
                         
                         {/* Back button to return to meeting point selection */}
@@ -696,7 +919,7 @@ export default function MeetingPointOptions({
                             onClick={() => setCurrentSection(1)}
                             className="w-full text-center text-sm text-gray-500 dark:text-gray-400 hover:text-primary mt-4"
                         >
-                            Choose a different meeting point
+                            ← Return to meeting point selection
                         </button>
                     </div>
                     
